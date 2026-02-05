@@ -1,0 +1,27 @@
+# ---- Build outputs ----
+plugin/target/
+
+# ---- Local Fiji runtime (do not commit app + local plugins) ----
+Fiji/
+
+# ---- Local agent/tooling files (do not publish) ----
+codex/
+skills/
+.codex/
+agents.md
+
+# ---- Java / Maven transient files ----
+*.class
+*.log
+
+# ---- IDE / Editor ----
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
