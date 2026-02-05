@@ -7,7 +7,7 @@ Area_Segmentater は、Fiji / ImageJ1 向けの 2D 領域分割プラグイン�
 
 最新版は **GitHub Releases** から取得してください。
 
-- Releases: `https://github.com/<YOUR_ACCOUNT>/<YOUR_REPO>/releases`
+- Releases: `https://github.com/kusumotok/Fiji_Area_Segmentater/releases`
 - 配布ファイル: `Area_Segmentater.jar`
 
 ## インストール
@@ -26,7 +26,7 @@ Area_Segmentater は、Fiji / ImageJ1 向けの 2D 領域分割プラグイン�
 - 2閾値 UI（`T_bg <= T_fg` を維持）
 - Preview
   - `Off`: 計算停止 + Overlay クリア
-  - `Seed preview`: Seed / Domain / BG の可視化
+  - `Seed preview`: Seed / DOMAIN / BG の可視化
   - `ROI boundaries`: 処理後ラベル境界の表示
 - Segmentation
   - Watershed（Surface: Invert Original / Original / Gradient(Sobel)）
@@ -45,7 +45,7 @@ Area_Segmentater は、Fiji / ImageJ1 向けの 2D 領域分割プラグイン�
 ### Watershed
 
 - Seed 付き優先度伝播で `DOMAIN` 内を分割
-- Surface は Invert Original / Original / Sobel から選択
+- Surface は Invert Original / Original / Gradient(Sobel) から選択
 - Connectivity（4/8）に従って伝播
 
 ### Random Walker

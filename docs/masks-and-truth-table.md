@@ -1,50 +1,65 @@
-# Masks & Truth Table (MUST FOLLOW)
+# マスクと真理値表（必須）
 
-Let:
-- I = pixel intensity
-- T_fg = Foreground Threshold (upper)
-- T_bg = Background Threshold (lower)
-Invariant: T_bg <= T_fg (snap UI to maintain)
+定義:
 
-Connectivity: 4 or 8 (user option, default 8)
+- `I` = 画素輝度
+- `T_fg` = Foreground Threshold（upper）
+- `T_bg` = Background Threshold（lower）
+- 不変条件: `T_bg <= T_fg`（UI側でsnap維持）
 
-## Default (invert = false): foreground is HIGH intensity side
-Foreground-side mask (threshold-based seed candidate):
-- FG_SIDE = (I >= T_fg)
+Connectivity は `4` または `8`（既定8）
 
-Background-side mask (domain exclusion):
-- BG_SIDE = (I <= T_bg)
+## 通常時（invert = false）
 
-Unknown range mask:
-- UNKNOWN = (T_bg < I) AND (I < T_fg)
+前景側マスク（threshold seed候補）:
 
-## Inverted (invert = true): foreground is LOW intensity side
-Foreground-side mask (threshold-based seed candidate):
-- FG_SIDE = (I <= T_fg)
+- `FG_SIDE = (I >= T_fg)`
 
-Background-side mask (domain exclusion):
-- BG_SIDE = (I >= T_bg)
+背景側マスク（DOMAIN除外）:
 
-Unknown range mask:
-- UNKNOWN = (T_fg < I) AND (I < T_bg)
+- `BG_SIDE = (I <= T_bg)`
 
-## DOMAIN (segmentation domain)
-- DOMAIN = NOT(BG_SIDE)  (i.e., I > T_bg when invert=false, I < T_bg when invert=true)
-- DOMAIN is fixed by T_bg and is independent of seed source.
-- DOMAIN outside is always background (label 0), and segmentation runs only inside DOMAIN.
+未知範囲マスク:
 
-## Foreground seeds (labels)
-- Seed source is selectable (threshold components / ROI Manager / binary image / find maxima / manual).
-- Threshold components use connected components on FG_SIDE.
-- Seeds outside DOMAIN are ignored.
+- `UNKNOWN = (T_bg < I) AND (I < T_fg)`
 
-## Unknown islands absorption (default ON)
-- Compute connected components on UNKNOWN.
-- If an UNKNOWN CC does NOT touch any FG marker CC (touch uses selected connectivity),
-  then absorb it into background:
-  - BG_SIDE <- BG_SIDE OR UNKNOWN_CC
-  - UNKNOWN <- UNKNOWN minus UNKNOWN_CC
+## Invert時（invert = true）
 
-Notes:
-- BG_SIDE is used only for DOMAIN exclusion and absorption bookkeeping.
-- BG_SIDE is not a competing seed label in segmentation.
+前景側マスク（threshold seed候補）:
+
+- `FG_SIDE = (I <= T_fg)`
+
+背景側マスク（DOMAIN除外）:
+
+- `BG_SIDE = (I >= T_bg)`
+
+未知範囲マスク:
+
+- `UNKNOWN = (T_fg < I) AND (I < T_bg)`
+
+## DOMAIN（segmentation対象）
+
+- `DOMAIN = NOT(BG_SIDE)`  
+  （invert=false では `I > T_bg`、invert=true では `I < T_bg`）
+- DOMAINは `T_bg` のみで決まり、Seed sourceには依存しない
+- DOMAIN外は常に背景ラベル0固定
+- segmentationはDOMAIN内のみで行う
+
+## 前景Seed（labels）
+
+- Seed source は切替可能（threshold components / ROI / binary image / find maxima / manual）
+- Threshold components は `FG_SIDE` の連結成分を使う
+- DOMAIN外のseedは無視する
+
+## Unknown islands 吸収（既定ON）
+
+- UNKNOWN 上で連結成分を計算する
+- UNKNOWN成分が FG marker 成分に接していない場合（接触判定は選択Connectivity）、
+  背景へ吸収する
+  - `BG_SIDE <- BG_SIDE OR UNKNOWN_CC`
+  - `UNKNOWN <- UNKNOWN - UNKNOWN_CC`
+
+補足:
+
+- `BG_SIDE` は DOMAIN除外と吸収の管理用
+- `BG_SIDE` は segmentation の競合seedとしては使わない

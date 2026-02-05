@@ -1,34 +1,42 @@
-# Phase Plan (DoD per phase)
+# フェーズ計画（各PhaseのDoD）
 
 Phase 1: UI skeleton
-- Implement the full UI layout and event wiring.
-- Enforce snap rule T_bg <= T_fg.
-- Enable/disable Surface based on method.
-- No marker computation required yet.
+
+- UIレイアウトとイベント配線を実装
+- `T_bg <= T_fg` のsnapを保証
+- methodに応じてSurfaceの有効/無効を切替
+- marker計算は未実装でも可
 
 Phase 2: Marker generation
-- Implement FG/BG/UNKNOWN masks per truth table.
-- DOMAIN fixed by T_bg (BG_SIDE exclusion).
-- Seed source selection (threshold components / ROI / binary / find maxima / manual).
-- Foreground connected-component labeling (4/8) for threshold/binary.
-- Unknown islands absorption (default ON).
-- No overlays required in this phase.
+
+- 真理値表どおりに FG/BG/UNKNOWN を実装
+- DOMAINを `T_bg` 固定で実装（BG_SIDE除外）
+- Seed source切替（threshold / ROI / binary / find maxima / manual）
+- threshold/binary の連結成分ラベリング（4/8）
+- Unknown islands吸収（既定ON）
+- このPhaseではoverlay不要
 
 Phase 3: Preview overlays
-- Preview Off: clear overlay + stop computation.
-- Seed fill overlay (single ImageRoi).
-- Optional seed centroid crosshair overlay.
-- ROI boundaries overlay.
-- Realtime update on threshold change when preview != Off.
+
+- Preview Off: overlay消去 + 計算停止
+- Seed fill overlay（単一ImageRoi）
+- 任意のseed centroid crosshair overlay
+- ROI boundaries overlay
+- preview有効時にリアルタイム更新
 
 Phase 4: Apply segmentation
-- Watershed (marker-controlled), surface: Original/Gradient(Sobel).
-- Random Walker with original intensity weights.
-- Output label image.
+
+- Watershed（marker-controlled）
+  - Surface: Invert Original / Original / Gradient(Sobel)
+- Random Walker
+  - 強度差重み + beta調整
+- ラベル画像出力（背景0, 前景1..N）
 
 Phase 5: Add ROI
-- Export label 1..N to RoiManager.
 
-Phase 6: Performance (optional)
-- Debounce + generation cancel for preview.
-- Caching for MarkerResult / SegmentationResult without breaking semantics.
+- ラベル `1..N` を RoiManager へ出力
+
+Phase 6: Performance（任意）
+
+- previewのdebounce + generation cancel
+- MarkerResult / SegmentationResult のキャッシュ（意味を変えない）

@@ -1,4 +1,4 @@
-# Verify Manual
+# 手動検証チェックリスト
 
 ## 確認項目
 
@@ -15,7 +15,7 @@
 4) 画像切替追従
 - アクティブ画像切替でUI/ヒストグラム/閾値/プレビューが崩れないこと
 
-5) Marker Fill Appearance
+5) Seed previewの見た目
 - Seed色/Domain色とopacity変更がプレビューに反映されること
 
 6) ヒストグラム吸着
@@ -37,5 +37,5 @@
 - SeedSource=Find MaximaのときのみSigma(Seed)が有効になること
 - Sigma(surface)変更でWatershed/Random Walkerの結果が変わること
 
-11) Random Walker island removal
+11) Random Walker飛び地除去
 - 同一ラベルの飛び地が背景(0)に落ちること

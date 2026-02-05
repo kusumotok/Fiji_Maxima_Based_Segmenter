@@ -1,74 +1,83 @@
-# Spec: Area_Segmentater (Fiji / ImageJ1 plugin)
+# 仕様: Area_Segmentater (Fiji / ImageJ1 プラグイン)
 
-## Goal
-A Threshold-like GUI that:
-- Uses two thresholds to generate foreground/background markers and unknown range.
-- Offers realtime preview (unless Preview=Off).
-- Runs marker-controlled watershed or random walker segmentation on Apply.
-- Exports object ROIs on Add ROI.
+## 目的
 
-## UI (Threshold-like)
-- Histogram panel for current slice.
-- Two sliders + numeric fields:
-  - Foreground Threshold (upper)
-  - Background Threshold (lower)
-  - Always enforce T_bg <= T_fg (snap)
-- Options:
-  - Preview Mode: Off / Marker boundaries / ROI boundaries
-  - Segmentation: Watershed / Random Walker
-  - Surface (Watershed only): Original / Invert Original / Gradient (Sobel)
-  - Random Walker beta: numeric + slider (enabled only when Random Walker is selected)
+Threshold 風 UI で以下を実現する。
+
+- 2閾値からマスクと Seed を生成する
+- Preview をリアルタイム更新する（Preview=Off を除く）
+- Apply で marker-controlled Watershed / Random Walker を実行する
+- Add ROI でオブジェクト ROI を出力する
+
+## UI（Threshold-like）
+
+- ヒストグラム（current slice）
+- 2本のスライダー + 数値入力
+  - Foreground Threshold（上限）
+  - Background Threshold（下限）
+  - 常に `T_bg <= T_fg` を維持（snap）
+- オプション
+  - Preview Mode: `Off / Seed preview / ROI boundaries`
+  - Segmentation: `Watershed / Random Walker`
+  - Surface（Watershed時のみ有効）: `Invert Original / Original / Gradient (Sobel)`
+  - Random Walker beta: 数値入力 + スライダー（Random Walker時のみ有効）
   - Invert checkbox
-- Connectivity: 4 / 8
-- Advanced (Appearance):
-  - Seed/Domain/BG preview toggles and colors
+  - Connectivity: `4 / 8`
+- Advanced（Appearance）
+  - Seed / Domain / BG の表示ON/OFFと色
   - Opacity
-  - ShowSeedCross: toggle to show crosshair at seed centroids
-- Advanced (Preprocessing):
-  - Enable Preprocessing (checkbox)
-  - Sigma (surface) slider [0..5]
-  - Sigma (seed) slider [0..5] (enabled only when SeedSource=Find Maxima)
-- Buttons:
-  - Apply (produces label image)
-  - Add ROI (exports ROIs for labels 1..N)
-  - Reset (restore defaults, clear overlay)
+  - ShowSeedCross（seed centroid crosshair）
+- Advanced（Preprocessing）
+  - Enable Preprocessing
+  - Sigma (surface) [0..5]
+  - Sigma (seed) [0..5]（SeedSource=Find Maxima のときのみ有効）
+- ボタン
+  - Apply（ラベル画像を生成）
+  - Add ROI（ラベル1..NをROI出力）
+  - Reset（既定値に戻す + Overlay消去）
 
-## Marker generation
-- Based on docs/masks-and-truth-table.md.
-- Foreground markers: connected components on foreground-side threshold mask; each component becomes a distinct marker label.
-- Background marker: background-side threshold mask; treated as background label.
-- Unknown: the range between thresholds.
-- Unknown islands absorption (default ON):
-  - Unknown connected components that do NOT touch any foreground marker component are absorbed into background.
- - Find Maxima seeds use an optional Gaussian prefilter (seed sigma) when preprocessing is enabled.
+## マーカー生成
 
-## Preview modes
-- Off:
-  - Clear overlay and stop any marker/preview computation.
-- Marker boundaries:
-  - Draw boundary lines for foreground markers and background marker.
-- ROI boundaries:
-  - Draw boundary lines for each foreground marker component (no text labels).
+- `docs/masks-and-truth-table.md` に従う
+- Foreground markers: 前景側マスクの連結成分を `1..N` ラベル化
+- Background sideはDOMAIN除外に使用し、競合seedには使わない
+- Unknown islands absorption（既定ON）
+  - 前景成分に接していない UNKNOWN 成分を背景側へ吸収
+- Find Maxima seed では、Enable Preprocessing時のみ seed用 Gaussian を適用可能
 
-## Apply
-- Always compute at full resolution.
-- Method: Watershed
-  - Surface: Original / Invert Original / Sobel(Original)
-  - Use marker-controlled watershed; output label image with 0 background, 1..N objects.
-- Method: Random Walker
-  - Use original intensity difference weights; beta is adjustable by UI.
-  - Output label image with 0 background, 1..N objects.
-  - Postprocess: keep only the largest connected component per label; other islands become background (0).
- - Optional Gaussian preprocessing:
-   - Surface sigma applies to the surface used by Watershed/Random Walker only.
-   - Masks/seeds/domain are computed without preprocessing.
+## Preview仕様
 
-## Add ROI
-- If no current segmentation result exists, run Apply-equivalent compute first.
-- Export one ROI per object label (1..N) to RoiManager.
-- ROI naming: obj-001, obj-002, ...
+- `Off`
+  - Overlayを消去し、preview計算を停止
+- `Seed preview`
+  - Seed/Domain/BG を単一 ImageRoi で表示
+  - 必要に応じて seed centroid crosshair を重畳
+- `ROI boundaries`
+  - segmentation後ラベルの境界を表示（文字ラベルは表示しない）
 
-## Non-goals
-- No 3D support.
-- No LoG option.
-- No auto-tuning filters by default; advanced options may exist later but default is minimal.
+## Apply仕様
+
+- 常に full resolution で計算する
+- Watershed
+  - Surface: `Invert Original / Original / Sobel(Original)`
+  - marker-controlled watershed で `0=背景, 1..N=前景`
+- Random Walker
+  - 強度差重みを使用
+  - beta はUIで調整可能
+  - 出力は `0=背景, 1..N=前景`
+  - 後処理でラベルごとに最大連結成分のみ保持し、飛び地は背景0へ戻す
+- Optional Gaussian preprocessing
+  - surface sigma は Watershed/Random Walker の surface にのみ適用
+  - masks / seeds / domain は前処理なしで計算
+
+## Add ROI仕様
+
+- 既存 segmentation 結果が無い場合は Apply 相当を先に実行
+- ラベル `1..N` を1ROIずつ RoiManager へ出力
+- ROI名は `obj-001, obj-002, ...`
+
+## 非対象
+
+- 3D 非対応
+- LoG 非対応
+- 自動チューニングは既定で提供しない
