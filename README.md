@@ -225,8 +225,14 @@ cp plugin/target/Maxima_Based_Segmenter.jar /path/to/Fiji.app/plugins/
 
 ## 依存関係
 
-- ImageJ 1.x
-- MorphoLibJ (IJPB-plugins) - 3D版で使用
+- ImageJ 1.x (Public Domain)
+- MorphoLibJ (IJPB-plugins) - 3D版で使用 (LGPL-3.0)
+
+## ライセンス
+
+このソフトウェアはMITライセンスの下で配布されています。詳細は[LICENSE](LICENSE)ファイルを参照してください。
+
+サードパーティライブラリのライセンス情報については[NOTICE.txt](NOTICE.txt)を参照してください。
 
 ## Note
 
