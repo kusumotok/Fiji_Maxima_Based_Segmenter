@@ -1,5 +1,8 @@
 # Maxima-Based Segmenter Suite
 
+[![GitHub release](https://img.shields.io/github/v/release/kusumotok/Fiji_Maxima_Based_Segmenter)](https://github.com/kusumotok/Fiji_Maxima_Based_Segmenter/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Fiji / ImageJ1 向けの領域分割プラグインスイートです。  
 Find Maxima ベースのシード検出と Watershed アルゴリズムを使用して、2D/3D 画像のセグメンテーションを行います。
 
@@ -29,7 +32,7 @@ Find Maxima ベースのシード検出と Watershed アルゴリズムを使用
 
 最新版は **GitHub Releases** から取得してください。
 
-- Releases: `https://github.com/kusumotok/Fiji_Area_Segmentater/releases`
+- Releases: `https://github.com/kusumotok/Fiji_Maxima_Based_Segmenter/releases`
 - 配布ファイル: `Maxima_Based_Segmenter.jar`
 
 ## インストール
