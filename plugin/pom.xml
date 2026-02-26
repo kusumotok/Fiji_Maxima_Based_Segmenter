@@ -5,9 +5,9 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>jp.yourorg</groupId>
-  <artifactId>fiji-area-segmentater</artifactId>
+  <artifactId>fiji-maxima-based-segmenter</artifactId>
   <version>0.1.0-SNAPSHOT</version>
-  <name>Area_Segmentater</name>
+  <name>Maxima_Based_Segmenter</name>
   <packaging>jar</packaging>
 
   <properties>
@@ -16,12 +16,32 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
+  <repositories>
+    <repository>
+      <id>scijava.public</id>
+      <url>https://maven.scijava.org/content/groups/public</url>
+    </repository>
+  </repositories>
+
   <dependencies>
     <!-- ImageJ1 API -->
     <dependency>
       <groupId>net.imagej</groupId>
       <artifactId>ij</artifactId>
       <version>1.54p</version>
+    </dependency>
+    <!-- MorphoLibJ for 3D segmentation -->
+    <dependency>
+      <groupId>fr.inra.ijpb</groupId>
+      <artifactId>MorphoLibJ_</artifactId>
+      <version>1.6.2</version>
+    </dependency>
+    <!-- JUnit for testing -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.13.2</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
@@ -33,7 +53,7 @@
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.3.0</version>
         <configuration>
-          <finalName>Area_Segmentater</finalName>
+          <finalName>Maxima_Based_Segmenter</finalName>
         </configuration>
       </plugin>
     </plugins>
