@@ -112,27 +112,48 @@ public class HistogramPanel extends Panel {
 
     private void ensureHistogram() {
         if (imp == null) return;
-        int slice = imp.getCurrentSlice();
+        // For 3D stacks, compute histogram once for entire stack (not per-slice)
+        boolean is3D = imp.getNSlices() > 1;
+        int slice = is3D ? -1 : imp.getCurrentSlice(); // -1 means "all slices"
         if (histogram != null && histSlice == slice) return;
-        histogram = computeHistogram(imp, model.getMinValue(), model.getMaxValue());
+        histogram = computeHistogram(imp, model.getMinValue(), model.getMaxValue(), is3D);
         histMax = 1;
         for (int v : histogram) if (v > histMax) histMax = v;
         histSlice = slice;
     }
 
-    private int[] computeHistogram(ImagePlus imp, int minValue, int maxValue) {
+    private int[] computeHistogram(ImagePlus imp, int minValue, int maxValue, boolean allSlices) {
         int bins = 256;
         int[] hist = new int[bins];
         if (maxValue <= minValue) return hist;
         int w = imp.getWidth();
         int h = imp.getHeight();
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                double v = imp.getProcessor().getPixelValue(x, y);
-                int bin = (int) Math.round((v - minValue) / (maxValue - minValue) * (bins - 1));
-                if (bin < 0) bin = 0;
-                if (bin >= bins) bin = bins - 1;
-                hist[bin]++;
+        
+        if (allSlices && imp.getNSlices() > 1) {
+            // Compute histogram for entire 3D stack
+            int nSlices = imp.getNSlices();
+            for (int z = 1; z <= nSlices; z++) {
+                imp.setSliceWithoutUpdate(z);
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        double v = imp.getProcessor().getPixelValue(x, y);
+                        int bin = (int) Math.round((v - minValue) / (maxValue - minValue) * (bins - 1));
+                        if (bin < 0) bin = 0;
+                        if (bin >= bins) bin = bins - 1;
+                        hist[bin]++;
+                    }
+                }
+            }
+        } else {
+            // Compute histogram for current slice only (2D)
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    double v = imp.getProcessor().getPixelValue(x, y);
+                    int bin = (int) Math.round((v - minValue) / (maxValue - minValue) * (bins - 1));
+                    if (bin < 0) bin = 0;
+                    if (bin >= bins) bin = bins - 1;
+                    hist[bin]++;
+                }
             }
         }
         return hist;

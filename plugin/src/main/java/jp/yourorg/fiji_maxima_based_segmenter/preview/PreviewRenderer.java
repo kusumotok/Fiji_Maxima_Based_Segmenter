@@ -166,13 +166,13 @@ public class PreviewRenderer {
 
     /**
      * Render 3D marker preview for the current Z-plane.
-     * Shows seeds from all slices: current slice in full color, other slices with transparency.
+     * Shows FG area + seed centroids for current slice, and seed centroids from other slices.
      */
     public void renderMarkerFill3D(ImagePlus imp, MarkerResult3D markers3D,
                                     int zPlane, AppearanceSettings appearance, MarkerSource markerSource) {
         if (markers3D == null) return;
         
-        // Render the current slice normally
+        // Render the current slice with FG area
         MarkerResult slice = markers3D.getSlice(zPlane);
         
         int w = slice.width;
@@ -188,8 +188,7 @@ public class PreviewRenderer {
         boolean showBg = appearance.isShowBg();
         boolean showSeedCentroids = appearance.isShowSeedCentroids();
         
-        boolean hideSeedMask = (markerSource == MarkerSource.FIND_MAXIMA);
-        
+        // 3D Extended Maxima produces areas, so always show seed mask
         for (int i = 0; i < size; i++) {
             if (showBg && slice.bgMask[i]) {
                 pixels[i] = bgColor;
@@ -197,7 +196,7 @@ public class PreviewRenderer {
             if (showDomain && slice.domainMask[i]) {
                 pixels[i] = domainColor;
             }
-            if (showSeed && !hideSeedMask && slice.seedMask[i]) {
+            if (showSeed && slice.seedMask[i]) {
                 pixels[i] = seedColor;
             }
         }
