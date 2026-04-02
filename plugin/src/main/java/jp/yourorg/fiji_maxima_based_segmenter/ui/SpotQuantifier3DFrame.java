@@ -77,6 +77,9 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
     private final TextField gaussXYField;
     private final TextField gaussZField;
 
+    private final Choice   connectivityChoice;
+    private final Checkbox fillHolesCheck;
+
     private final CheckboxGroup previewGroup = new CheckboxGroup();
     private final Checkbox previewOff;
     private final Checkbox previewOverlay;
@@ -162,6 +165,13 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         gaussXYField.setEnabled(false);
         gaussZField .setEnabled(false);
 
+        connectivityChoice = new Choice();
+        connectivityChoice.add("6");
+        connectivityChoice.add("18");
+        connectivityChoice.add("26");
+        connectivityChoice.select("6");
+        fillHolesCheck = new Checkbox("Fill holes", false);
+
         previewOff     = new Checkbox("Off",     previewGroup, true);
         previewOverlay = new Checkbox("Overlay", previewGroup, false);
         previewRoi     = new Checkbox("ROI",     previewGroup, false);
@@ -194,6 +204,7 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         center.add(makeVolRow("Min vol µm³:", minVolCheck, minVolBar, minVolField));
         center.add(makeVolRow("Max vol µm³:", maxVolCheck, maxVolBar, maxVolField));
         center.add(makeGaussRow());
+        center.add(makeConnectivityRow());
         center.add(makePreviewRow());
         add(center, BorderLayout.CENTER);
 
@@ -239,6 +250,14 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         p.add(gaussXYField);
         p.add(new Label("Z σ:"));
         p.add(gaussZField);
+        return p;
+    }
+
+    private Panel makeConnectivityRow() {
+        Panel p = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        p.add(new Label("Connectivity:"));
+        p.add(connectivityChoice);
+        p.add(fillHolesCheck);
         return p;
     }
 
@@ -338,6 +357,10 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         gaussZField.addFocusListener(new FocusAdapter() {
             @Override public void focusLost(FocusEvent e) { commitGaussZField(); }
         });
+
+        // Connectivity / fill holes
+        connectivityChoice.addItemListener(e -> onThreshOrGaussChanged());
+        fillHolesCheck.addItemListener(e -> onThreshOrGaussChanged());
 
         // Preview radio
         ItemListener previewListener = e -> {
@@ -620,7 +643,8 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
     }
 
     private String ccKey(QuantifierParams p) {
-        return p.threshold + ":" + p.gaussianBlur + ":" + p.gaussXY + ":" + p.gaussZ;
+        return p.threshold + ":" + p.gaussianBlur + ":" + p.gaussXY + ":" + p.gaussZ
+             + ":" + p.connectivity + ":" + p.fillHoles;
     }
 
     private void updateVolSliderRanges() {
@@ -786,7 +810,10 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
     private QuantifierParams buildParams() {
         Double minVol = minVolEnabled ? minVolVal : null;
         Double maxVol = maxVolEnabled ? maxVolVal : null;
-        return new QuantifierParams(threshold, minVol, maxVol, gaussEnabled, gaussXYVal, gaussZVal);
+        int conn = Integer.parseInt(connectivityChoice.getSelectedItem());
+        boolean fillH = fillHolesCheck.getState();
+        return new QuantifierParams(threshold, minVol, maxVol, gaussEnabled, gaussXYVal, gaussZVal,
+                                    conn, fillH);
     }
 
     /** Volume slider uses linear scale over [volRangeMin, volRangeMax]. */
