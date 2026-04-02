@@ -22,6 +22,7 @@ import jp.yourorg.fiji_maxima_based_segmenter.util.CsvExporter;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Timer;
@@ -90,6 +91,7 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
     private final Button saveRoiBtn    = new Button("Save ROI");
     private final Button saveCsvBtn    = new Button("Save CSV");
     private final Button saveAllBtn    = new Button("Save All");
+    private final Button batchBtn      = new Button("Batch…");
 
     // --- State ---
     private boolean syncing = false;
@@ -215,6 +217,7 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         buttons.add(saveRoiBtn);
         buttons.add(saveCsvBtn);
         buttons.add(saveAllBtn);
+        buttons.add(batchBtn);
         add(buttons, BorderLayout.SOUTH);
     }
 
@@ -377,6 +380,7 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         saveRoiBtn.addActionListener(e -> runSaveRoi());
         saveCsvBtn.addActionListener(e -> runSaveCsvOnly());
         saveAllBtn.addActionListener(e -> runSaveAll());
+        batchBtn  .addActionListener(e -> runBatch());
 
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) {
@@ -716,54 +720,128 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         }
     }
 
-    /** Save CSV + params.txt + ROI ZIP (all 3). */
+    /** Save CSV + params.txt + ROI ZIP (all 3) for the current image. */
     private void runSaveAll() {
         QuantifierParams params = buildParams();
-        CcResult3D cc = getOrComputeCC(params);
-        if (cc == null || cc.voxelCounts.isEmpty()) {
-            IJ.error("Spot Quantifier 3D", "No spots detected — adjust threshold.");
-            return;
-        }
-        Map<Integer, Integer> status = cc.classifyLabels(params, voxelVol);
-        SegmentationResult3D seg = cc.buildFilteredResult(status);
-        List<SpotMeasurement> spots = SpotMeasurer.measure(seg, imp, vw, vh, vd);
-
         FileDialog fd = new FileDialog(this, "Choose output folder (select any file inside it)", FileDialog.SAVE);
         fd.setFile(imp.getShortTitle() + "_spots.csv");
         fd.setVisible(true);
-        String dirStr = fd.getDirectory();
-        String name   = fd.getFile();
-        if (dirStr == null || name == null) return;
+        if (fd.getDirectory() == null || fd.getFile() == null) return;
 
-        File   outDir     = new File(dirStr);
-        File   csvDir     = new File(outDir, "csv");
-        File   roiDir     = new File(outDir, "roi");
-        if (!csvDir.exists()) csvDir.mkdirs();
-        if (!roiDir.exists()) roiDir.mkdirs();
+        File outDir = new File(fd.getDirectory());
+        String err = saveOneToDir(imp, params, outDir);
+        if (err == null) {
+            String basename = imp.getShortTitle().replaceAll("\\.tiff?$", "");
+            IJ.showMessage("Saved",
+                imp.getNSlices() + " slices processed.\n" +
+                "csv/" + basename + "_spots.csv\n" +
+                "roi/" + basename + "_RoiSet.zip\n" +
+                "params.txt");
+        } else {
+            IJ.error("Spot Quantifier 3D", "Save failed: " + err);
+        }
+    }
 
-        String basename   = name.replaceAll("_spots\\.csv$", "").replaceAll("\\.csv$", "");
-        File   csvFile    = new File(csvDir,  basename + "_spots.csv");
-        File   paramsFile = new File(outDir,  "params.txt");
-        File   roiFile    = new File(roiDir,  basename + "_RoiSet.zip");
+    /**
+     * Process one image with the given params and save csv/roi/params under outDir.
+     * Returns null on success, error message string on failure.
+     */
+    private static String saveOneToDir(ImagePlus target, QuantifierParams params, File outDir) {
+        Calibration cal = target.getCalibration();
+        double tw = cal.pixelWidth  > 0 ? cal.pixelWidth  : 1;
+        double th = cal.pixelHeight > 0 ? cal.pixelHeight : 1;
+        double td = cal.pixelDepth  > 0 ? cal.pixelDepth  : 1;
+        double tVoxelVol = tw * th * td;
+
+        CcResult3D cc = SpotQuantifier3D.computeCC(target, params);
+        if (cc == null || cc.voxelCounts.isEmpty()) return "no spots detected";
+
+        Map<Integer, Integer> status = cc.classifyLabels(params, tVoxelVol);
+        SegmentationResult3D seg = cc.buildFilteredResult(status);
+        List<SpotMeasurement> spots = SpotMeasurer.measure(seg, target, tw, th, td);
+
+        File csvDir = new File(outDir, "csv");
+        File roiDir = new File(outDir, "roi");
+        csvDir.mkdirs();
+        roiDir.mkdirs();
+
+        String basename   = target.getShortTitle().replaceAll("\\.tiff?$", "");
+        File   csvFile    = new File(csvDir, basename + "_spots.csv");
+        File   paramsFile = new File(outDir, "params.txt");
+        File   roiFile    = new File(roiDir, basename + "_RoiSet.zip");
         try {
             CsvExporter.writeCsv(spots, csvFile);
             CsvExporter.writeParams(params, paramsFile);
-
             RoiManager rm = RoiManager.getRoiManager();
             rm.reset();
             new RoiExporter3D().exportToRoiManager(seg.labelImage);
             if (rm.getCount() > 0) {
                 RoiExporter.saveRoiManagerToZip(roiFile.getAbsolutePath());
             }
-
-            IJ.showMessage("Saved",
-                spots.size() + " spot(s) saved.\n" +
-                "csv/" + csvFile.getName() + "\n" +
-                paramsFile.getName() + "\n" +
-                "roi/" + roiFile.getName());
+            return null;
         } catch (Exception ex) {
-            IJ.error("Spot Quantifier 3D", "Save failed: " + ex.getMessage());
+            return ex.getMessage();
         }
+    }
+
+    /** Batch: apply current params to all TIFFs in a folder, save to output folder. */
+    private void runBatch() {
+        QuantifierParams params = buildParams();
+
+        String inDirStr = IJ.getDirectory("Select input folder");
+        if (inDirStr == null) return;
+
+        String outDirStr = IJ.getDirectory("Select output folder");
+        if (outDirStr == null) return;
+
+        File inDir  = new File(inDirStr);
+        File outDir = new File(outDirStr);
+
+        File[] files = inDir.listFiles((dir, name) -> {
+            String lower = name.toLowerCase();
+            return lower.endsWith(".tif") || lower.endsWith(".tiff");
+        });
+        if (files == null || files.length == 0) {
+            IJ.showMessage("Batch", "No TIFF files found in:\n" + inDirStr);
+            return;
+        }
+        Arrays.sort(files);
+
+        int ok = 0, skipped = 0;
+        for (int i = 0; i < files.length; i++) {
+            IJ.showProgress(i, files.length);
+            IJ.showStatus("Batch " + (i + 1) + "/" + files.length + ": " + files[i].getName());
+
+            ImagePlus target = IJ.openImage(files[i].getAbsolutePath());
+            if (target == null) {
+                IJ.log("Batch SKIP (cannot open): " + files[i].getName());
+                skipped++;
+                continue;
+            }
+            if (target.getNSlices() < 2) {
+                IJ.log("Batch SKIP (not 3D): " + files[i].getName());
+                target.close();
+                skipped++;
+                continue;
+            }
+
+            String err = saveOneToDir(target, params, outDir);
+            target.close();
+            if (err != null) {
+                IJ.log("Batch SKIP (" + err + "): " + files[i].getName());
+                skipped++;
+            } else {
+                IJ.log("Batch OK: " + files[i].getName());
+                ok++;
+            }
+        }
+
+        IJ.showProgress(1.0);
+        IJ.showStatus("");
+        IJ.showMessage("Batch done",
+            ok + " file(s) processed.\n" +
+            (skipped > 0 ? skipped + " skipped — see Log for details.\n" : "") +
+            "Output: " + outDir.getAbsolutePath());
     }
 
     private List<SpotMeasurement> computeSpots() {
