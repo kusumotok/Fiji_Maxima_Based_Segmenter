@@ -1,8 +1,9 @@
-# Maxima-Based Segmenter Suite - プラグイン概要
+# Fiji Segmentation Suite - プラグイン概要
 
 ## 5つのプラグイン
 
-すべてのプラグインは `Plugins > Segmentation > Maxima Based Segmenter` メニュー下に配置されています。
+- Maxima Based Segmenter 系（4本）: `Plugins > Segmentation > Maxima Based Segmenter`
+- Spot Quantifier 系（1本）: `Plugins > Segmentation > Spot Quantifier`
 
 ### 1. Maxima_Based_Segmenter（フル機能版）
 
