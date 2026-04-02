@@ -8,7 +8,7 @@ Find Maxima ベースのシード検出と Watershed アルゴリズムを使用
 
 ## プラグイン構成
 
-このスイートには3つのプラグインが含まれています：
+このスイートには5つのプラグインが含まれています：
 
 ### 1. Maxima_Based_Segmenter（フル機能版）
 - 2D画像用の高度なセグメンテーションツール
@@ -28,6 +28,21 @@ Find Maxima ベースのシード検出と Watershed アルゴリズムを使用
 - BG Threshold と Tolerance の2パラメータ
 - 3D ROI出力（Position/Group属性付き）
 
+### 4. Slice_Based_3D_Segmenter（スライスベース3D版）
+- 3Dスタック画像用のセグメンテーションツール
+- 各スライスに2D Watershed を適用し、スライス間の重複領域をマージして3D領域を構築
+- BG Threshold と Tolerance の2パラメータ
+- 3D ROI出力（Position/Group属性付き）
+- MorphoLibJ 非依存で動作
+
+### 5. Spot_Quantifier_3D_（スポット定量版）
+- 3Dスタック画像用の固定閾値ベーススポット定量ツール
+- 固定閾値 → バイナリマスク → 3D Connected Components（MorphoLibJ、32-bit）
+- 近傍選択（6 / 18 / 26、デフォルト: 6）・穴埋め（Fill holes）オプション
+- 体積フィルタ（min/max vol µm³）でスポットを絞り込み
+- 測定値（体積・IntDen・Mean・重心）を CSV に出力
+- バッチマクロ対応・出力ディレクトリ指定可能
+
 ## ダウンロード（推奨）
 
 最新版は **GitHub Releases** から取得してください。
@@ -45,6 +60,8 @@ Find Maxima ベースのシード検出と Watershed アルゴリズムを使用
 - `Plugins > Segmentation > Maxima Based Segmenter > Maxima_Based_Segmenter`（フル機能版）
 - `Plugins > Segmentation > Maxima Based Segmenter > Maxima_Based_Segmenter_Simple`（シンプル版）
 - `Plugins > Segmentation > Maxima Based Segmenter > Maxima_Based_Segmenter_3D`（3D版）
+- `Plugins > Segmentation > Maxima Based Segmenter > Slice_Based_3D_Segmenter`（スライスベース3D版）
+- `Plugins > Segmentation > Maxima Based Segmenter > Spot Quantifier 3D`（スポット定量版）
 
 ## 使用方法
 
@@ -108,6 +125,53 @@ ROI出力形式：
 - Group属性: オブジェクトID
 - 命名規則: `obj-XXX-zYYY`
 
+### Slice_Based_3D_Segmenter（スライスベース3D版）
+
+1. Fiji で3Dスタック画像を開く（Z > 1）
+2. `Plugins > Segmentation > Maxima Based Segmenter > Slice_Based_3D_Segmenter` を実行
+3. パラメータを調整：
+   - **BG Threshold**: 背景閾値
+   - **Tolerance**: Find Maxima の tolerance パラメータ
+4. Preview Mode で現在のZ平面のプレビュー表示
+5. **Apply** / **Add ROI** / **Save ROI** で結果を出力
+
+固定設定：
+- 各スライスに2D Watershed（C4、Invert Original）を適用後、スライス間重複でマージ
+- MorphoLibJ 非依存
+
+ROI出力形式：
+- 各オブジェクトの各Z平面が個別のROIとして出力
+- Position属性: Z座標、Group属性: オブジェクトID
+- 命名規則: `obj-XXX-zYYY`
+
+### Spot_Quantifier_3D_（スポット定量版）
+
+1. Fiji で3Dスタック画像を開く（Z > 1、キャリブレーション設定済みであること）
+2. `Plugins > Segmentation > Maxima Based Segmenter > Spot Quantifier 3D` を実行
+3. パラメータを調整：
+   - **Threshold**: 固定強度閾値（この値以上のボクセルをスポット候補とする）
+   - **Min vol µm³**: スポット最小体積フィルタ（チェックで有効化）
+   - **Max vol µm³**: スポット最大体積フィルタ（チェックで有効化）
+   - **Gaussian blur**: 前処理オプション（XY σ・Z σ指定）
+   - **Connectivity**: 3D連結近傍（6 / 18 / 26、デフォルト: 6）
+   - **Fill holes**: バイナリマスクの穴埋め（スライス毎2D、デフォルト: off）
+4. Preview Mode でリアルタイムプレビュー
+   - **Overlay**: カラー塗りつぶし（黄=valid / 赤=too small / 青=too large）
+   - **ROI**: 実際に保存されるROIの輪郭線（ROI Managerは変更しない）
+5. ボタンで出力：
+   - **Save CSV**: CSVのみ保存（任意の場所に直接）
+   - **Save All**: CSV + params.txt + ROI ZIP を `csv/` `roi/` フォルダに一括保存
+
+出力ファイル構成（Save All）：
+```
+{outputDir}/
+├── csv/{basename}_spots.csv     # スポット測定値（1行1スポット）
+├── roi/{basename}_RoiSet.zip    # ROI Manager 用 ROI セット
+└── params.txt                   # 解析パラメータ（バッチ全体で共通・上書き）
+```
+
+CSV カラム：`spot_id, volume_um3, volume_vox, integrated_intensity, mean_intensity, centroid_x_um, centroid_y_um, centroid_z_um`
+
 ## マクロ対応
 
 すべてのプラグインはマクロから呼び出し可能です。
@@ -152,6 +216,35 @@ run("Maxima_Based_Segmenter_3D", "bg_threshold=50 tolerance=10");
 パラメータ：
 - `bg_threshold=N`: 背景閾値
 - `tolerance=N`: Extended Maxima tolerance
+
+### Slice_Based_3D_Segmenter（スライスベース3D版）
+
+```javascript
+run("Slice_Based_3D_Segmenter", "bg_threshold=50 tolerance=10");
+```
+
+パラメータ：
+- `bg_threshold=N`: 背景閾値（デフォルト: 0）
+- `tolerance=N`: Find Maxima tolerance（デフォルト: 10）
+
+### Spot_Quantifier_3D_（スポット定量版）
+
+```javascript
+run("Spot Quantifier 3D",
+    "threshold=300 min_vol=0.1 max_vol=200.0 gaussian_blur=false " +
+    "connectivity=6 fill_holes=false output=[C:/path/to/results]");
+```
+
+パラメータ：
+- `threshold=N`: 固定強度閾値（デフォルト: 500）
+- `min_vol=N`: スポット最小体積 µm³（空白または省略で無効）
+- `max_vol=N`: スポット最大体積 µm³（空白または省略で無効）
+- `gaussian_blur=true/false`: Gaussian ぼかし（デフォルト: false）
+- `gauss_xy=N`: Gaussian sigma XY（デフォルト: 1.0）
+- `gauss_z=N`: Gaussian sigma Z（デフォルト: 0.5）
+- `connectivity=N`: 3D連結近傍 6 / 18 / 26（デフォルト: 6）
+- `fill_holes=true/false`: バイナリマスク穴埋め（デフォルト: false）
+- `output=[path]`: 出力ディレクトリ（省略時は画像と同じディレクトリ）
 
 ## プログラマティックAPI
 
@@ -218,6 +311,8 @@ cp plugin/target/Maxima_Based_Segmenter.jar /path/to/Fiji.app/plugins/
 
 ## ドキュメント
 
+- プラグイン概要: `docs/plugins-overview.md`
+- **Spot Quantifier 3D 処理詳細・手動再現手順**: `docs/spot-quantifier-3d.md`
 - 仕様: `docs/spec.md`
 - 決定事項: `docs/decisions.md`
 - 手動検証: `docs/verify-manual.md`

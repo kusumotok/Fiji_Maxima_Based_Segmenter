@@ -1,6 +1,6 @@
 # Maxima-Based Segmenter Suite - プラグイン概要
 
-## 3つのプラグイン
+## 5つのプラグイン
 
 すべてのプラグインは `Plugins > Segmentation > Maxima Based Segmenter` メニュー下に配置されています。
 
@@ -135,6 +135,92 @@ ImagePlus labelImage3D = Maxima_Based_Segmenter_3D_.segment(imp, bgThreshold, to
 
 ---
 
+### 4. Slice_Based_3D_Segmenter（スライスベース3D版）
+
+**目的**: MorphoLibJ 非依存の3Dスタックセグメンテーション
+
+**対象ユーザー**: MorphoLibJ なし環境、またはスライス単位の Watershed で十分なユーザー
+
+**主な機能**:
+- 各スライスに2D Watershed（C4、Invert Original、Find Maxima）を適用
+- スライス間の重複領域をUnion-Findでマージし3D領域を構築
+- BG Threshold と Tolerance の2パラメータ
+- 3D ROI出力（Position/Group属性付き）
+- MorphoLibJ 非依存
+
+**固定設定**:
+- Connectivity: C4（各スライスの2D処理）
+- Method: Watershed (Invert Original)
+- Marker Source: Find Maxima
+
+**ROI出力形式**:
+- 各オブジェクトの各Z平面が個別のROI
+- Position属性: Z座標（1-based）、Group属性: オブジェクトID
+- 命名規則: `obj-XXX-zYYY`
+
+**マクロパラメータ**:
+```
+bg_threshold=N tolerance=N
+```
+
+---
+
+### 5. Spot_Quantifier_3D_（スポット定量版）
+
+**目的**: 3D共焦点画像における蛍光スポット（中心体・斑点状シグナル等）の定量
+
+**対象ユーザー**: バッチ処理で蛍光スポットの輝度・体積・個数を定量したいユーザー
+
+**主な機能**:
+- 固定閾値 → バイナリマスク → 3D Connected Components（MorphoLibJ・32-bit）
+- 近傍選択（6 / 18 / 26、デフォルト: 6）
+- 穴埋めオプション（Fill holes、スライス毎2D、デフォルト: off）
+- 体積フィルタ（min/max vol µm³）
+- 測定値: volume_um3 / volume_vox / integrated_intensity / mean_intensity / centroid XYZ
+- プレビュー: Overlay（カラー塗りつぶし）/ ROI（輪郭線・ROI Managerを変更しない）
+- バッチマクロ対応、出力ディレクトリ指定可能
+
+**パラメータ**:
+- Threshold: 固定強度閾値（デフォルト: 500）
+- Min vol µm³: 最小体積フィルタ（チェックで有効化）
+- Max vol µm³: 最大体積フィルタ（チェックで有効化）
+- Gaussian blur: 前処理オプション（XY σ / Z σ）
+- Connectivity: 3D連結近傍（6 / 18 / 26、デフォルト: 6）
+- Fill holes: バイナリマスク穴埋め（デフォルト: off）
+
+**プレビューモード**:
+- Off: プレビュー無効
+- Overlay: 黄=valid / 赤=too small / 青=too large（50% 透明度塗りつぶし）
+- ROI: 実際に保存されるROIの輪郭線のみ
+
+**ボタン**:
+- **Save CSV**: CSVのみ任意の場所に保存
+- **Save All**: csv/ + roi/ + params.txt を一括保存（フォルダ構造を自動生成）
+
+**出力ファイル構成（Save All）**:
+```
+{outputDir}/
+├── csv/{basename}_spots.csv
+├── roi/{basename}_RoiSet.zip
+└── params.txt                 # 条件ごとに1ファイル（バッチ全体で上書き）
+```
+
+**CSV カラム**:
+```
+spot_id, volume_um3, volume_vox, integrated_intensity, mean_intensity,
+centroid_x_um, centroid_y_um, centroid_z_um
+```
+
+**マクロパラメータ**:
+```
+threshold=N min_vol=N max_vol=N gaussian_blur=true/false gauss_xy=N gauss_z=N
+connectivity=N fill_holes=true/false output=[path]
+```
+
+**依存関係**: MorphoLibJ（`BinaryImages.componentsLabeling` 使用）
+
+---
+
 ## 共通機能
 
 ### Preview Mode
@@ -172,6 +258,7 @@ jp.yourorg.fiji_maxima_based_segmenter/
 ├── Maxima_Based_Segmenter_.java          # フル機能版エントリーポイント
 ├── Maxima_Based_Segmenter_Simple_.java   # シンプル版エントリーポイント
 ├── Maxima_Based_Segmenter_3D_.java       # 3D版エントリーポイント
+├── Spot_Quantifier_3D_.java              # スポット定量版エントリーポイント
 ├── core/                                  # 共有データモデル
 │   ├── ThresholdModel.java
 │   ├── MarkerBuilder.java
@@ -179,22 +266,32 @@ jp.yourorg.fiji_maxima_based_segmenter/
 │   ├── MarkerResult.java
 │   ├── MarkerResult3D.java
 │   └── (Enums: Connectivity, Method, Surface, etc.)
-├── alg/                                   # セグメンテーションアルゴリズム
+├── alg/                                   # セグメンテーションアルゴリズム（共通）
 │   ├── WatershedRunner.java
 │   ├── Watershed3DRunner.java
 │   ├── RandomWalkerRunner.java
 │   ├── SegmentationResult.java
 │   └── SegmentationResult3D.java
+├── alg/                                   # スポット定量版アルゴリズム
+│   ├── SpotQuantifier3D.java             # CC計算（MorphoLibJ 26近傍・32-bit）
+│   ├── CcResult3D.java                   # CC結果・分類・フィルタ
+│   ├── SegmentationResult3D.java         # フィルタ済みラベル画像
+│   ├── SpotMeasurer.java                 # O(W×H×D)単一スキャン測定
+│   ├── SpotMeasurement.java              # スポット測定値データクラス
+│   └── QuantifierParams.java             # パラメータデータクラス
 ├── preview/                               # プレビュー機能
 │   └── PreviewRenderer.java
 ├── roi/                                   # ROI出力
 │   ├── RoiExporter.java
 │   └── RoiExporter3D.java
-└── ui/                                    # UIフレーム
-    ├── DualThresholdFrame.java
-    ├── SimpleSegmenterFrame.java
-    ├── Segmenter3DFrame.java
-    └── HistogramPanel.java
+├── ui/                                    # UIフレーム
+│   ├── DualThresholdFrame.java
+│   ├── SimpleSegmenterFrame.java
+│   ├── Segmenter3DFrame.java
+│   ├── SpotQuantifier3DFrame.java        # スポット定量版GUI
+│   └── HistogramPanel.java
+└── util/
+    └── CsvExporter.java                  # CSV・params.txt 出力
 ```
 
 ### 依存関係
@@ -215,8 +312,12 @@ jp.yourorg.fiji_maxima_based_segmenter/
 |------|---------------|
 | 2D画像、シンプルな操作 | Maxima_Based_Segmenter_Simple |
 | 2D画像、詳細な制御が必要 | Maxima_Based_Segmenter |
-| 3Dスタック画像 | Maxima_Based_Segmenter_3D |
-| マクロで自動化 | Simple版 または 3D版（静的API利用可能） |
+| 3Dスタック画像（形状分割、MorphoLibJあり） | Maxima_Based_Segmenter_3D |
+| 3Dスタック画像（形状分割、MorphoLibJ不要） | Slice_Based_3D_Segmenter |
+| 3Dスタック画像（スポット定量・輝度・体積測定） | Spot_Quantifier_3D_ |
+| バッチ処理・CSV出力が必要 | Spot_Quantifier_3D_ |
+| 近傍数や穴埋めを制御したい | Spot_Quantifier_3D_ |
+| マクロで自動化 | Simple版 / Slice_Based / 3D版 / Spot_Quantifier_3D_ |
 | Random Walkerを使いたい | Maxima_Based_Segmenter（フル機能版のみ） |
 | Threshold Componentsをシードにしたい | Maxima_Based_Segmenter（フル機能版のみ） |
 
@@ -227,5 +328,7 @@ jp.yourorg.fiji_maxima_based_segmenter/
 - ✅ フル機能版: 完全実装（マクロ対応、Save ROI含む）
 - ✅ シンプル版: 完全実装（マクロ対応、静的API、Save ROI含む）
 - ✅ 3D版: 完全実装（マクロ対応、静的API、Save ROI含む）
-- ✅ ビルド設定: 単一JAR（Maxima_Based_Segmenter.jar）に3プラグイン同梱
-- ✅ plugins.config: 3プラグインすべて登録済み
+- ✅ スライスベース3D版: 完全実装（マクロ対応、ROI出力、MorphoLibJ非依存）
+- ✅ スポット定量版: 完全実装（マクロ対応、connectivity/fill_holes、Save CSV/Save All、3プレビューモード）
+- ✅ ビルド設定: 単一JAR（Maxima_Based_Segmenter.jar）に5プラグイン同梱
+- ✅ plugins.config: 5プラグインすべて登録済み
