@@ -20,6 +20,7 @@ import jp.yourorg.fiji_maxima_based_segmenter.core.ThresholdModel;
 import jp.yourorg.fiji_maxima_based_segmenter.roi.RoiExporter;
 import jp.yourorg.fiji_maxima_based_segmenter.roi.RoiExporter3D;
 import jp.yourorg.fiji_maxima_based_segmenter.util.CsvExporter;
+import jp.yourorg.fiji_maxima_based_segmenter.util.SeededSpotQuantifier3DSaveSupport;
 
 import java.awt.*;
 import java.awt.event.*;
@@ -114,6 +115,8 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private final Checkbox  saveParamCheck     = new Checkbox("Param",      true);
     private final Checkbox  customFolderCheck  = new Checkbox("Custom folder name:", false);
     private final TextField folderNameField    = new TextField("{name} result", 22);
+    private final TextField saveToField        = new TextField("", 22);
+    private final Button    saveToBtn          = new Button("Save to...");
     private final Button    saveToggleBtn      = new Button("\u25bc Save options");
     private       boolean   saveSectionExpanded = true;
     private       Panel     saveOptionsPanel;
@@ -127,6 +130,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private final Button zprojRefreshBtn = new Button("Reload");
 
     private final Label statusLabel = new Label("", Label.LEFT);
+    private File selectedSaveDir;
 
     // --- State ---
     private boolean syncing = false;
@@ -224,6 +228,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         roiColorChoice.select(0); // Yellow
 
         overlayOpacityField = new TextField("50", 3);
+        saveToField.setEditable(false);
 
         zprojChoice = new Choice();
         refreshProcessingImageChoices();
@@ -465,6 +470,24 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         c.gridy = row++;
         p.add(folderRow, c);
 
+        Panel saveToRow = new Panel(new GridBagLayout());
+        GridBagConstraints sc = new GridBagConstraints();
+        sc.gridy = 0;
+        sc.insets = new Insets(0, 0, 0, 4);
+        sc.anchor = GridBagConstraints.WEST;
+        sc.gridx = 0;
+        saveToRow.add(new Label("Save to:"), sc);
+        sc.gridx = 1;
+        sc.weightx = 1.0;
+        sc.fill = GridBagConstraints.HORIZONTAL;
+        saveToRow.add(saveToField, sc);
+        sc.gridx = 2;
+        sc.weightx = 0;
+        sc.fill = GridBagConstraints.NONE;
+        saveToRow.add(saveToBtn, sc);
+        c.gridy = row++;
+        p.add(saveToRow, c);
+
         Panel tokensRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         tokensRow.add(new Label("tokens: {name} {date} {seed} {area}"));
         c.gridy = row;
@@ -651,7 +674,9 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         saveCsvCheck.setEnabled(hasTarget);
         saveParamCheck.setEnabled(hasTarget);
         customFolderCheck.setEnabled(hasTarget);
-        folderNameField.setEnabled(hasTarget);
+        folderNameField.setEnabled(hasTarget && customFolderCheck.getState());
+        saveToField.setEnabled(hasTarget);
+        saveToBtn.setEnabled(hasTarget);
         applyBtn.setEnabled(hasTarget);
         saveAllBtn.setEnabled(hasTarget);
     }
@@ -778,6 +803,8 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         zprojRefreshBtn.addActionListener(e -> refreshZProjChoiceItems());
 
         saveToggleBtn.addActionListener(e -> toggleSaveSection());
+        customFolderCheck.addItemListener(e -> updateTargetAvailability());
+        saveToBtn.addActionListener(e -> chooseSaveDirectory());
 
         applyBtn  .addActionListener(e -> runApply());
         saveAllBtn.addActionListener(e -> runSaveAll());
@@ -800,6 +827,23 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         saveToggleBtn.setLabel(saveSectionExpanded ? "\u25bc Save options" : "\u25b6 Save options");
         centerPanel.validate();
         pack();
+    }
+
+    private void chooseSaveDirectory() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Select save folder");
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        chooser.setAcceptAllFileFilterUsed(false);
+        if (selectedSaveDir != null && selectedSaveDir.isDirectory()) {
+            chooser.setCurrentDirectory(selectedSaveDir);
+        }
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File dir = chooser.getSelectedFile();
+            if (dir != null) {
+                selectedSaveDir = dir;
+                saveToField.setText(dir.getAbsolutePath());
+            }
+        }
     }
 
     // =========================================================
@@ -1298,7 +1342,9 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             setStatusText("Select a 3D image.");
             return;
         }
-        File outDir = resolveOutputDir(imp);
+        File outDir = SeededSpotQuantifier3DSaveSupport.resolveOutputDir(
+            this, rawImp, customFolderCheck.getState(), folderNameField.getText(),
+            seedThreshold, areaThreshold, selectedSaveDir);
         if (outDir == null) return;
 
         if (outDir.exists()) {
@@ -1332,7 +1378,8 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         new SwingWorker<String, String>() {
             @Override
             protected String doInBackground() {
-                return saveOneToDir(imp, areaThreshold, seedThreshold, areaEnabled, params, outDir,
+                return SeededSpotQuantifier3DSaveSupport.saveOneToDir(
+                    imp, areaThreshold, seedThreshold, areaEnabled, params, outDir,
                     saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveCsv, saveParam, roiColor,
                     msg -> publish(msg));
             }
@@ -1730,7 +1777,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
                         String basename = target.getShortTitle().replaceAll("\\.tiff?$", "");
                         String pattern  = customF ? folderPat : "{name} result";
-                        String folder   = expandFolderTokens(pattern, basename, st, at);
+                        String folder   = SeededSpotQuantifier3DSaveSupport.expandFolderTokens(pattern, basename, st, at);
                         File   outDir   = new File(f.getParent(), folder);
 
                         if (outDir.exists()) {
@@ -1761,7 +1808,8 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                             // overwriteState[0] == 1 — overwrite all, fall through
                         }
 
-                        String err = saveOneToDir(target, at, st, areaEn, params, outDir,
+                        String err = SeededSpotQuantifier3DSaveSupport.saveOneToDir(
+                            target, at, st, areaEn, params, outDir,
                             seedRoi, sizeRoi, areaRoi, resultRoi, csv, param, roiColor, msg -> publish(msg));
                         target.close();
                         if (err != null) {
