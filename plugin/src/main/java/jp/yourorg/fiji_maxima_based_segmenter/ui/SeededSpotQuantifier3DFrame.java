@@ -6,7 +6,7 @@ import ij.WindowManager;
 import ij.gui.ImageRoi;
 import ij.gui.Overlay;
 import ij.gui.Roi;
-import ij.gui.Toolbar;
+import ij.io.FileInfo;
 import ij.measure.Calibration;
 import ij.plugin.filter.ThresholdToSelection;
 import ij.plugin.frame.PlugInFrame;
@@ -23,7 +23,10 @@ import jp.yourorg.fiji_maxima_based_segmenter.util.CsvExporter;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
-import java.util.Arrays;
+import java.nio.file.Files;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,27 +34,24 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
+import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 
 /**
  * GUI frame for Seeded_Spot_Quantifier_3D_.
- *
- * Layout:
- *   [Histogram (full 3D stack, two threshold lines)]
- *   Area threshold:  [slider] [field]    ← low threshold (spot extent / domain)
- *   Seed threshold:  [slider] [field]    ← high threshold (seed detection)
- *   [✓] Min vol µm³: [slider] [field]   ← seed size filter
- *   [✓] Max vol µm³: [slider] [field]
- *   Connectivity: [6▼]  [□] Fill holes
- *   Preview: ○ Off  ● Overlay  ○ ROI
- *   [Apply]  ROI color: [▼]  [Add ROI]  [Save ROI]  [Save CSV]  [Save All]  [Batch…]
  */
 public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
-    // --- Preview overlay colors ---
-    // (filled overlay colors are derived dynamically from seedColorChoice / roiColorChoice)
-
-    /** Selectable colors for the ROI preview outline. */
     static final String[][] PREVIEW_COLOR_OPTIONS = {
         { "Yellow",  "#FFFF00" },
         { "Purple",  "#AA00FF" },
@@ -65,7 +65,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private final ImagePlus imp;
     private final ThresholdModel model;
 
-    // Calibration (µm per pixel)
     private final double vw, vh, vd, voxelVol;
 
     // --- UI components ---
@@ -95,11 +94,22 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private final Checkbox previewRoi;
 
     private final Button applyBtn   = new Button("Apply");
-    private final Button addRoiBtn  = new Button("Add ROI");
-    private final Button saveRoiBtn = new Button("Save ROI");
-    private final Button saveCsvBtn = new Button("Save CSV");
     private final Button saveAllBtn = new Button("Save All");
-    private final Button batchBtn   = new Button("Batch…");
+    private final Button batchBtn   = new Button("Batch\u2026");
+
+    // --- Save section ---
+    private final Checkbox  saveSeedRoiCheck   = new Checkbox("Seed ROI",   true);
+    private final Checkbox  saveSizeRoiCheck   = new Checkbox("Size ROI",   false);
+    private final Checkbox  saveAreaRoiCheck   = new Checkbox("Area ROI",   true);
+    private final Checkbox  saveResultRoiCheck = new Checkbox("Result ROI", true);
+    private final Checkbox  saveCsvCheck       = new Checkbox("CSV",        true);
+    private final Checkbox  saveParamCheck     = new Checkbox("Param",      true);
+    private final Checkbox  customFolderCheck  = new Checkbox("Custom folder name:", false);
+    private final TextField folderNameField    = new TextField("{name} result", 22);
+    private final Button    saveToggleBtn      = new Button("\u25bc Save options");
+    private       boolean   saveSectionExpanded = true;
+    private       Panel     saveOptionsPanel;
+    private       Panel     centerPanel;
 
     private final Choice    seedColorChoice;
     private final Choice    roiColorChoice;
@@ -118,21 +128,20 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private int     seedThreshold;
     private boolean minVolEnabled, maxVolEnabled;
     private double  minVolVal, maxVolVal;
+
     // --- Segmentation cache ---
     private SeededQuantifier3D.SeededResult cachedSeededResult;
     private String                          segCacheKey;
 
-    // --- Z-proj render cache (invalidated with segmentation cache) ---
-    private int[]      cachedZProjTypeMap;   // 0=bg, 1=seed, 2=area  (Overlay mode)
-    private List<Roi>  cachedZProjSeedRois;  // union outlines for seed labels (ROI mode)
-    private List<Roi>  cachedZProjAreaRois;  // union outlines for area labels (ROI mode)
+    // --- Z-proj render cache ---
+    private int[]      cachedZProjTypeMap;
+    private List<Roi>  cachedZProjSeedRois;
+    private List<Roi>  cachedZProjAreaRois;
 
-    // Vol slider ranges
     private double volRangeMin = 0.01;
     private double volRangeMax = 100.0;
     private static final int VOL_SLIDER_STEPS = 1000;
 
-    // --- Preview / Z-watch timers ---
     private final Timer previewTimer = new Timer("ssq3d-preview", true);
     private TimerTask   previewTask;
     private final AtomicInteger previewGen = new AtomicInteger();
@@ -155,9 +164,8 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         int imgMax = model.getMaxValue();
         if (imgMax <= imgMin) imgMax = imgMin + 1;
 
-        // Initial thresholds: area = 20% of max, seed = 40% of max
         areaEnabled   = true;
-        areaThreshold = model.getTBg();           // ThresholdModel default (20% of max)
+        areaThreshold = model.getTBg();
         seedThreshold = Math.min(imgMax, areaThreshold * 2);
         model.setTBg(areaThreshold);
         model.setTFg(seedThreshold);
@@ -209,7 +217,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         refreshZProjChoiceItems();
 
         histogramPanel = new HistogramPanel(imp, model, this::onHistogramThresholds);
-        histogramPanel.setFgEnabled(true); // show both area and seed threshold lines
+        histogramPanel.setFgEnabled(true);
 
         buildLayout();
         wireEvents();
@@ -229,62 +237,69 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         top.add(histogramPanel, BorderLayout.CENTER);
         add(top, BorderLayout.NORTH);
 
-        Panel center = new Panel(new GridLayout(0, 1, 2, 2));
-        center.add(makeThreshRow("Seed threshold:", seedThreshBar, seedThreshField));
-        center.add(makeVolRow("Min vol µm³ (seed):", minVolCheck, minVolBar, minVolField));
-        center.add(makeVolRow("Max vol µm³ (seed):", maxVolCheck, maxVolBar, maxVolField));
-        center.add(makeAreaThreshRow());
-        center.add(makeConnectivityRow());
-        center.add(makePreviewRow());
-        center.add(makeColorsRow());
-        center.add(makeZProjRow());
-        center.add(makeStatusRow());
-        add(center, BorderLayout.CENTER);
+        centerPanel = new Panel(new GridLayout(0, 1, 2, 2));
+        centerPanel.add(makeThreshRow("Seed threshold:", seedThreshBar, seedThreshField));
+        centerPanel.add(makeVolRow("Min vol \u00b5m\u00b3 (seed):", minVolCheck, minVolBar, minVolField));
+        centerPanel.add(makeVolRow("Max vol \u00b5m\u00b3 (seed):", maxVolCheck, maxVolBar, maxVolField));
+        centerPanel.add(makeAreaThreshRow());
+        centerPanel.add(makeConnectivityRow());
+        centerPanel.add(makePreviewRow());
+        centerPanel.add(makeColorsRow());
+        centerPanel.add(makeZProjRow());
+        centerPanel.add(makeSaveToggleRow());
+        saveOptionsPanel = makeSaveOptionsPanel();
+        centerPanel.add(saveOptionsPanel);
+        centerPanel.add(makeStatusRow());
+        add(centerPanel, BorderLayout.CENTER);
 
         Panel buttons = new Panel(new FlowLayout(FlowLayout.RIGHT, 4, 4));
         buttons.add(applyBtn);
-        buttons.add(addRoiBtn);
-        buttons.add(saveRoiBtn);
-        buttons.add(saveCsvBtn);
         buttons.add(saveAllBtn);
         buttons.add(batchBtn);
         add(buttons, BorderLayout.SOUTH);
     }
 
-    private Panel makeAreaThreshRow() {
-        Panel p = new Panel(new GridBagLayout());
-        GridBagConstraints c = baseGbc();
-        c.gridx = 0; p.add(areaEnabledCheck, c);
-        c.gridx = 1; p.add(new Label("Area threshold:"), c);
-        c.gridx = 2; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-        areaThreshBar.setPreferredSize(new Dimension(220, 18));
-        p.add(areaThreshBar, c);
-        c.gridx = 3; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-        p.add(areaThreshField, c);
-        return p;
+    /** Two-row row: label on top, slider+field on bottom. */
+    private Panel makeThreshRow(String label, Scrollbar bar, TextField field) {
+        Panel outer = new Panel(new GridLayout(2, 1, 1, 1));
+        Panel labelRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        labelRow.add(new Label(label));
+        outer.add(labelRow);
+        outer.add(makeSliderFieldRow(bar, field));
+        return outer;
     }
 
-    private Panel makeThreshRow(String label, Scrollbar bar, TextField field) {
-        Panel p = new Panel(new GridBagLayout());
-        GridBagConstraints c = baseGbc();
-        c.gridx = 0; p.add(new Label(label), c);
-        c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-        bar.setPreferredSize(new Dimension(240, 18));
-        p.add(bar, c);
-        c.gridx = 2; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-        p.add(field, c);
-        return p;
+    private Panel makeAreaThreshRow() {
+        Panel outer = new Panel(new GridLayout(2, 1, 1, 1));
+        Panel labelRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        labelRow.add(areaEnabledCheck);
+        labelRow.add(new Label("Area threshold:"));
+        outer.add(labelRow);
+        outer.add(makeSliderFieldRow(areaThreshBar, areaThreshField));
+        return outer;
     }
 
     private Panel makeVolRow(String label, Checkbox check, Scrollbar bar, TextField field) {
+        Panel outer = new Panel(new GridLayout(2, 1, 1, 1));
+        Panel labelRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        labelRow.add(check);
+        labelRow.add(new Label(label));
+        outer.add(labelRow);
+        outer.add(makeSliderFieldRow(bar, field));
+        return outer;
+    }
+
+    /** Bottom row of a two-row slider block: slider stretches, field fixed. */
+    private Panel makeSliderFieldRow(Scrollbar bar, TextField field) {
         Panel p = new Panel(new GridBagLayout());
-        GridBagConstraints c = baseGbc();
-        c.gridx = 0; p.add(check, c);
-        c.gridx = 1; p.add(new Label(label), c);
-        c.gridx = 2; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-        bar.setPreferredSize(new Dimension(200, 18));
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridy = 0;
+        c.insets = new Insets(0, 4, 0, 2);
+        c.anchor = GridBagConstraints.WEST;
+        c.gridx = 0; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
         p.add(bar, c);
-        c.gridx = 3; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+        c.gridx = 1; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+        c.insets = new Insets(0, 2, 0, 4);
         p.add(field, c);
         return p;
     }
@@ -297,11 +312,19 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         return p;
     }
 
+    /** Z-proj row: label fixed, Choice stretches with window, Reload fixed. */
     private Panel makeZProjRow() {
-        Panel p = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        p.add(new Label("Z-proj:"));
-        p.add(zprojChoice);
-        p.add(zprojRefreshBtn);
+        Panel p = new Panel(new GridBagLayout());
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridy = 0;
+        c.insets = new Insets(2, 4, 2, 4);
+        c.anchor = GridBagConstraints.WEST;
+        c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+        p.add(new Label("Z-proj:"), c);
+        c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
+        p.add(zprojChoice, c);
+        c.gridx = 2; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+        p.add(zprojRefreshBtn, c);
         return p;
     }
 
@@ -333,12 +356,49 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         return p;
     }
 
-    private static GridBagConstraints baseGbc() {
-        GridBagConstraints c = new GridBagConstraints();
-        c.gridy  = 0;
-        c.insets = new Insets(2, 4, 2, 4);
-        c.anchor = GridBagConstraints.WEST;
-        return c;
+    private Panel makeSaveToggleRow() {
+        Panel p = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        p.add(saveToggleBtn);
+        return p;
+    }
+
+    private Panel makeSaveOptionsPanel() {
+        Panel p = new Panel(new GridLayout(0, 1, 2, 2));
+
+        Panel selectRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        Button selectAllBtn   = new Button("Select All");
+        Button deselectAllBtn = new Button("Deselect All");
+        selectAllBtn  .addActionListener(e -> setSaveChecks(true));
+        deselectAllBtn.addActionListener(e -> setSaveChecks(false));
+        selectRow.add(selectAllBtn);
+        selectRow.add(deselectAllBtn);
+        p.add(selectRow);
+
+        Panel checksRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        checksRow.add(saveSeedRoiCheck);
+        checksRow.add(saveSizeRoiCheck);
+        checksRow.add(saveAreaRoiCheck);
+        checksRow.add(saveResultRoiCheck);
+        checksRow.add(saveCsvCheck);
+        checksRow.add(saveParamCheck);
+        p.add(checksRow);
+
+        Panel folderRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        folderRow.add(customFolderCheck);
+        folderRow.add(folderNameField);
+        folderRow.add(new Label("tokens: {name} {date} {seed} {area}"));
+        p.add(folderRow);
+
+        return p;
+    }
+
+    private void setSaveChecks(boolean state) {
+        saveSeedRoiCheck  .setState(state);
+        saveSizeRoiCheck  .setState(state);
+        saveAreaRoiCheck  .setState(state);
+        saveResultRoiCheck.setState(state);
+        saveCsvCheck      .setState(state);
+        saveParamCheck    .setState(state);
     }
 
     // =========================================================
@@ -346,7 +406,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     // =========================================================
 
     private void wireEvents() {
-        // Area enabled checkbox
         areaEnabledCheck.addItemListener(e -> {
             if (syncing) return;
             areaEnabled = areaEnabledCheck.getState();
@@ -355,7 +414,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             onParamsChanged();
         });
 
-        // Area threshold
         areaThreshBar.addAdjustmentListener(e -> {
             if (syncing) return;
             areaThreshold = areaThreshBar.getValue();
@@ -371,7 +429,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             @Override public void focusLost(FocusEvent e) { commitAreaThreshField(); }
         });
 
-        // Seed threshold
         seedThreshBar.addAdjustmentListener(e -> {
             if (syncing) return;
             seedThreshold = seedThreshBar.getValue();
@@ -387,7 +444,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             @Override public void focusLost(FocusEvent e) { commitSeedThreshField(); }
         });
 
-        // Min vol
         minVolCheck.addItemListener(e -> {
             if (syncing) return;
             minVolEnabled = minVolCheck.getState();
@@ -408,7 +464,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             @Override public void focusLost(FocusEvent e) { commitMinVolField(); }
         });
 
-        // Max vol
         maxVolCheck.addItemListener(e -> {
             if (syncing) return;
             maxVolEnabled = maxVolCheck.getState();
@@ -429,33 +484,27 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             @Override public void focusLost(FocusEvent e) { commitMaxVolField(); }
         });
 
-        // Connectivity / fill holes
         connectivityChoice.addItemListener(e -> onParamsChanged());
-        fillHolesCheck.addItemListener(e -> onParamsChanged());
+        fillHolesCheck    .addItemListener(e -> onParamsChanged());
 
-        // Preview
         ItemListener previewListener = e -> onPreviewModeChanged();
         previewOff    .addItemListener(previewListener);
         previewOverlay.addItemListener(previewListener);
         previewRoi    .addItemListener(previewListener);
 
-        // Color choices and opacity — re-render overlay only, no re-segmentation
-        seedColorChoice.addItemListener(e -> onColorChanged());
-        roiColorChoice .addItemListener(e -> onColorChanged());
+        seedColorChoice    .addItemListener(e -> onColorChanged());
+        roiColorChoice     .addItemListener(e -> onColorChanged());
         overlayOpacityField.addActionListener(e -> onColorChanged());
         overlayOpacityField.addFocusListener(new FocusAdapter() {
             @Override public void focusLost(FocusEvent e) { onColorChanged(); }
         });
 
-        // Z-proj window selection
         zprojChoice    .addItemListener(e -> onColorChanged());
         zprojRefreshBtn.addActionListener(e -> refreshZProjChoiceItems());
 
-        // Buttons
+        saveToggleBtn.addActionListener(e -> toggleSaveSection());
+
         applyBtn  .addActionListener(e -> runApply());
-        addRoiBtn .addActionListener(e -> runAddRoi());
-        saveRoiBtn.addActionListener(e -> runSaveRoi());
-        saveCsvBtn.addActionListener(e -> runSaveCsvOnly());
         saveAllBtn.addActionListener(e -> runSaveAll());
         batchBtn  .addActionListener(e -> runBatch());
 
@@ -467,6 +516,20 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                 dispose();
             }
         });
+    }
+
+    private void toggleSaveSection() {
+        saveSectionExpanded = !saveSectionExpanded;
+        if (saveSectionExpanded) {
+            // Insert before the last component (status row)
+            centerPanel.add(saveOptionsPanel, centerPanel.getComponentCount() - 1);
+            saveToggleBtn.setLabel("\u25bc Save options");
+        } else {
+            centerPanel.remove(saveOptionsPanel);
+            saveToggleBtn.setLabel("\u25b6 Save options");
+        }
+        centerPanel.validate();
+        pack();
     }
 
     // =========================================================
@@ -508,7 +571,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             statusLabel.setText("");
             IJ.showStatus("");
         } else {
-            // Restore overlay from cache if available; otherwise prompt user to press Apply
             if (cachedSeededResult != null) {
                 updatePreviewForZChange();
             } else {
@@ -517,13 +579,11 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         }
     }
 
-    /** Mark params as changed without running any computation. */
     private void setModified() {
         statusLabel.setText("Press Apply to update");
         IJ.showStatus("");
     }
 
-    /** Color choice changed — re-render current overlay without re-segmenting. */
     private void onColorChanged() {
         if (previewOff.getState() || cachedSeededResult == null) return;
         int zPlane = imp.getCurrentSlice();
@@ -594,8 +654,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     // Preview
     // =========================================================
 
-    // schedulePreview() removed — computation is now triggered only by runApply().
-
     private void updatePreviewForZChange() {
         if (previewOff.getState() || cachedSeededResult == null) return;
         int zPlane = imp.getCurrentSlice();
@@ -618,10 +676,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         }
     }
 
-    /**
-     * Overlay preview: seed pixels filled with seed color, area-only pixels filled with area color.
-     * When areaEnabled=false, seedSeg==finalSeg so everything is colored with seed color.
-     */
     private void renderOverlay(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
                                 boolean areaEn, int zPlane) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
@@ -668,12 +722,10 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         if (zp != null) renderOverlayOnZProj(seedSeg, finalSeg, areaEn, zp);
     }
 
-    /** Solid RGB pixel value (no alpha) for ImageRoi fill. */
     private static int toRgbSolid(Color c) {
         return (c.getRed() << 16) | (c.getGreen() << 8) | c.getBlue();
     }
 
-    /** Overlay opacity from the input field, clamped to [0, 100] and converted to 0.0–1.0. */
     private double getOverlayOpacity() {
         try {
             int v = Integer.parseInt(overlayOpacityField.getText().trim());
@@ -683,12 +735,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         }
     }
 
-    /**
-     * ROI Preview overlay with dual-color coding:
-     *   cyan   = seed segmentation (seedSeg labels)
-     *   yellow = final segmentation (finalSeg labels)
-     * When areaEnabled=false, seed==final so only yellow is drawn.
-     */
     private void renderRoiOverlay(SegmentationResult3D seedSeg,
                                    SegmentationResult3D finalSeg,
                                    boolean areaEnabled, int zPlane) {
@@ -698,14 +744,12 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
         Overlay overlay = new Overlay();
 
-        // Draw seed outlines (only when area is enabled and seedSeg differs from finalSeg)
         if (areaEnabled && seedSeg != null && seedSeg.labelImage != null
                 && zPlane <= seedSeg.labelImage.getNSlices()) {
             addLabelOutlines(seedSeg.labelImage.getStack().getProcessor(zPlane),
                              selectedSeedPreviewColor(), overlay);
         }
 
-        // Draw area outlines
         addLabelOutlines(finalSeg.labelImage.getStack().getProcessor(zPlane),
                          selectedRoiColor(), overlay);
 
@@ -716,16 +760,9 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         if (zp != null) renderRoiOverlayOnZProj(seedSeg, finalSeg, areaEnabled, zp);
     }
 
-    /**
-     * Extract per-label outlines from a label image slice and add to the overlay.
-     * Uses bounding-box cropping: O(W*H) single pass to collect bboxes, then
-     * ThresholdToSelection runs only on each label's bbox crop (O(Ai) per label).
-     */
     private static void addLabelOutlines(ImageProcessor labelIp, Color color, Overlay overlay) {
         int w = labelIp.getWidth(), h = labelIp.getHeight();
 
-        // Phase 1: single pass — record bounding box per label
-        // bbox[label] = {minX, minY, maxX, maxY}
         HashMap<Integer, int[]> bboxMap = new HashMap<>();
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -743,7 +780,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             }
         }
 
-        // Phase 2: per label, fill only the bbox region (+1px padding for closed boundary)
         for (Map.Entry<Integer, int[]> entry : bboxMap.entrySet()) {
             int label = entry.getKey();
             int[] bb = entry.getValue();
@@ -761,7 +797,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             bp.setThreshold(255, 255, ImageProcessor.NO_LUT_UPDATE);
             Roi roi = ThresholdToSelection.run(new ImagePlus("", bp));
             if (roi == null) continue;
-            // Translate roi from bbox-local coords back to full-image coords
             roi.setLocation(roi.getXBase() + x0, roi.getYBase() + y0);
             roi.setStrokeColor(color);
             overlay.add(roi);
@@ -772,7 +807,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     // Z-projection overlay rendering
     // =========================================================
 
-    /** Returns the selected Z-proj ImagePlus, or null if None / closed / size mismatch. */
     private ImagePlus getZProjImp() {
         String title = zprojChoice.getSelectedItem();
         if (title == null || "None".equals(title)) return null;
@@ -782,7 +816,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         return zp;
     }
 
-    /** Rebuild the Z-proj choice list from currently open images (excluding imp). */
     private void refreshZProjChoiceItems() {
         String current = zprojChoice.getSelectedItem();
         zprojChoice.removeAll();
@@ -800,14 +833,12 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         if (current != null) zprojChoice.select(current);
     }
 
-    /** Overlay mode on Z-proj: uses cached typeMap; rebuilds only when cache is null. */
     private void renderOverlayOnZProj(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
                                        boolean areaEn, ImagePlus zp) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
         int w = finalSeg.labelImage.getWidth();
         int h = finalSeg.labelImage.getHeight();
 
-        // Build typeMap once per segmentation result
         if (cachedZProjTypeMap == null) {
             int d = finalSeg.labelImage.getNSlices();
             boolean hasSeed = areaEn && seedSeg != null && seedSeg.labelImage != null;
@@ -819,12 +850,12 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                         if (hasSeed && z <= seedSeg.labelImage.getNSlices()
                                 && (int) Math.round(seedSeg.labelImage.getStack()
                                         .getProcessor(z).getPixelValue(x, y)) > 0) {
-                            type = 1; // seed — highest priority
+                            type = 1;
                             break;
                         }
                         if ((int) Math.round(finalSeg.labelImage.getStack()
                                 .getProcessor(z).getPixelValue(x, y)) > 0) {
-                            type = 2; // area-only
+                            type = 2;
                         }
                     }
                     cachedZProjTypeMap[y * w + x] = type;
@@ -832,7 +863,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             }
         }
 
-        // Apply current colors to typeMap (fast, no label image scan)
         int seedRgb = toRgbSolid(selectedSeedPreviewColor());
         int areaRgb = toRgbSolid(selectedRoiColor());
         ColorProcessor cp = new ColorProcessor(w, h);
@@ -851,19 +881,16 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         zp.updateAndDraw();
     }
 
-    /** ROI mode on Z-proj: uses cached ROI shapes; rebuilds only when cache is null. */
     private void renderRoiOverlayOnZProj(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
                                           boolean areaEn, ImagePlus zp) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
 
-        // Build ROI shape lists once per segmentation result
         if (cachedZProjAreaRois == null) {
             cachedZProjAreaRois = buildLabelUnionRois(finalSeg.labelImage);
             cachedZProjSeedRois = (areaEn && seedSeg != null && seedSeg.labelImage != null)
                                   ? buildLabelUnionRois(seedSeg.labelImage) : null;
         }
 
-        // Apply current colors to cached ROI shapes and build overlay (fast)
         Overlay overlay = new Overlay();
         if (cachedZProjSeedRois != null) {
             Color sc = selectedSeedPreviewColor();
@@ -875,7 +902,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         zp.updateAndDraw();
     }
 
-    /** Build union-projected ROI outlines for every label in labelImp. */
     private static List<Roi> buildLabelUnionRois(ImagePlus labelImp) {
         int w = labelImp.getWidth(), h = labelImp.getHeight(), d = labelImp.getNSlices();
         TreeSet<Integer> labels = new TreeSet<>();
@@ -887,7 +913,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                     if (v > 0) labels.add(v);
                 }
         }
-        List<Roi> rois = new java.util.ArrayList<>();
+        List<Roi> rois = new ArrayList<>();
         for (int label : labels) {
             ByteProcessor bp = new ByteProcessor(w, h);
             byte[] bpix = (byte[]) bp.getPixels();
@@ -903,42 +929,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             if (roi != null) rois.add(roi);
         }
         return rois;
-    }
-
-    /**
-     * For each label in labelImp, compute the Z-union mask across all slices,
-     * convert to a 2D ROI via ThresholdToSelection, and add to the overlay.
-     */
-    private static void addLabelUnionOutlines(ImagePlus labelImp, Color color, Overlay overlay) {
-        int w = labelImp.getWidth(), h = labelImp.getHeight(), d = labelImp.getNSlices();
-
-        // Collect all label IDs present in the stack
-        TreeSet<Integer> labels = new TreeSet<>();
-        for (int z = 1; z <= d; z++) {
-            ImageProcessor ip = labelImp.getStack().getProcessor(z);
-            for (int y = 0; y < h; y++)
-                for (int x = 0; x < w; x++) {
-                    int v = (int) Math.round(ip.getPixelValue(x, y));
-                    if (v > 0) labels.add(v);
-                }
-        }
-
-        for (int label : labels) {
-            ByteProcessor bp = new ByteProcessor(w, h);
-            byte[] bpix = (byte[]) bp.getPixels();
-            for (int z = 1; z <= d; z++) {
-                ImageProcessor ip = labelImp.getStack().getProcessor(z);
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++)
-                        if ((int) Math.round(ip.getPixelValue(x, y)) == label)
-                            bpix[y * w + x] = (byte) 255;
-            }
-            bp.setThreshold(255, 255, ImageProcessor.NO_LUT_UPDATE);
-            Roi roi = ThresholdToSelection.run(new ImagePlus("", bp));
-            if (roi == null) continue;
-            roi.setStrokeColor(color);
-            overlay.add(roi);
-        }
     }
 
     private void clearOverlay() {
@@ -1010,162 +1000,84 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         previewTimer.schedule(previewTask, 0);
     }
 
-    private void runAddRoi() {
-        SegmentationResult3D seg = computeSeg();
-        if (seg == null) return;
-        new RoiExporter3D().exportToRoiManager(seg.labelImage, selectedRoiColor());
-    }
-
-    private void runSaveRoi() {
-        SegmentationResult3D seg = computeSeg();
-        if (seg == null) return;
-        RoiManager rm = RoiManager.getRoiManager();
-        if (rm == null || rm.getCount() == 0) {
-            new RoiExporter3D().exportToRoiManager(seg.labelImage, selectedRoiColor());
-        }
-        FileDialog fd = new FileDialog(this, "Save ROIs as ZIP", FileDialog.SAVE);
-        fd.setFile(imp.getShortTitle() + "_RoiSet.zip");
-        fd.setVisible(true);
-        String dir  = fd.getDirectory();
-        String name = fd.getFile();
-        if (dir == null || name == null) return;
-        RoiExporter.saveRoiManagerToZip(dir + name);
-    }
-
-    private void runSaveCsvOnly() {
-        List<SpotMeasurement> spots = computeSpots();
-        if (spots == null) return;
-        FileDialog fd = new FileDialog(this, "Save CSV", FileDialog.SAVE);
-        fd.setFile(imp.getShortTitle() + "_spots.csv");
-        fd.setVisible(true);
-        String dir  = fd.getDirectory();
-        String name = fd.getFile();
-        if (dir == null || name == null) return;
-        try {
-            CsvExporter.writeCsv(spots, new File(dir, name));
-        } catch (Exception ex) {
-            IJ.error("Seeded Spot Quantifier 3D", "CSV save failed: " + ex.getMessage());
-        }
-    }
+    // =========================================================
+    // Save
+    // =========================================================
 
     private void runSaveAll() {
-        QuantifierParams params = buildParams();
-        FileDialog fd = new FileDialog(this, "Choose output folder (select any file inside it)",
-            FileDialog.SAVE);
-        fd.setFile(imp.getShortTitle() + "_spots.csv");
-        fd.setVisible(true);
-        if (fd.getDirectory() == null || fd.getFile() == null) return;
+        File outDir = resolveOutputDir(imp);
+        if (outDir == null) return;
 
-        File outDir = new File(fd.getDirectory());
-        String err = saveOneToDir(imp, areaThreshold, seedThreshold, areaEnabled, params,
-            outDir, selectedRoiColor());
+        if (outDir.exists()) {
+            int choice = JOptionPane.showOptionDialog(
+                this,
+                "Folder already exists:\n" + outDir.getAbsolutePath() + "\nOverwrite?",
+                "Folder Exists",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                new Object[]{"Overwrite", "Cancel"},
+                "Cancel");
+            if (choice != 0) return;
+        }
+
+        QuantifierParams params = buildParams();
+        String err = saveOneToDir(imp, areaThreshold, seedThreshold, areaEnabled, params, outDir,
+            saveSeedRoiCheck.getState(), saveSizeRoiCheck.getState(),
+            saveAreaRoiCheck.getState(), saveResultRoiCheck.getState(),
+            saveCsvCheck.getState(), saveParamCheck.getState(),
+            selectedRoiColor());
         if (err == null) {
-            String basename = imp.getShortTitle().replaceAll("\\.tiff?$", "");
-            IJ.showMessage("Saved",
-                imp.getNSlices() + " slices processed.\n" +
-                "csv/" + basename + "_spots.csv\n" +
-                "roi/" + basename + "_RoiSet.zip\n" +
-                "params/" + basename + "_params.txt");
+            IJ.showMessage("Saved", "Saved to:\n" + outDir.getAbsolutePath());
         } else {
             IJ.error("Seeded Spot Quantifier 3D", "Save failed: " + err);
         }
     }
 
-    /** Batch: apply current params to all TIFFs in a folder, save to output folder. */
     private void runBatch() {
-        QuantifierParams params = buildParams();
-        int batchAreaThreshold = areaThreshold;
-        int batchSeedThreshold = seedThreshold;
-        boolean batchAreaEnabled = areaEnabled;
-        java.awt.Color batchRoiColor = selectedRoiColor();
+        new BatchDialog().setVisible(true);
+    }
 
-        String inDirStr = IJ.getDirectory("Select input folder");
-        if (inDirStr == null) return;
+    /** Resolve output directory: <imageFileDir>/<folderName>. Falls back to FileDialog. */
+    private File resolveOutputDir(ImagePlus target) {
+        String basename = target.getShortTitle().replaceAll("\\.tiff?$", "");
+        String pattern  = customFolderCheck.getState() ? folderNameField.getText() : "{name} result";
+        String folderName = expandFolderTokens(pattern, basename, seedThreshold, areaThreshold);
 
-        String outDirStr = IJ.getDirectory("Select output folder");
-        if (outDirStr == null) return;
+        FileInfo fi = target.getOriginalFileInfo();
+        String dirStr = (fi != null && fi.directory != null && !fi.directory.isEmpty())
+            ? fi.directory : null;
 
-        File inDir  = new File(inDirStr);
-        File outDir = new File(outDirStr);
-
-        File[] files = inDir.listFiles((dir, name) -> {
-            String lower = name.toLowerCase();
-            return lower.endsWith(".tif") || lower.endsWith(".tiff");
-        });
-        if (files == null || files.length == 0) {
-            IJ.showMessage("Batch", "No TIFF files found in:\n" + inDirStr);
-            return;
+        if (dirStr == null) {
+            FileDialog fd = new FileDialog(this, "Choose save location (select any file)", FileDialog.SAVE);
+            fd.setFile("placeholder.csv");
+            fd.setVisible(true);
+            if (fd.getDirectory() == null) return null;
+            dirStr = fd.getDirectory();
         }
-        Arrays.sort(files);
-        batchBtn.setEnabled(false);
 
-        new SwingWorker<int[], String>() {
-            @Override
-            protected int[] doInBackground() {
-                int ok = 0, skipped = 0;
-                for (int i = 0; i < files.length; i++) {
-                    IJ.showProgress(i, files.length);
-                    IJ.showStatus("Batch " + (i + 1) + "/" + files.length
-                        + ": " + files[i].getName());
+        return new File(dirStr, folderName);
+    }
 
-                    ImagePlus target = IJ.openImage(files[i].getAbsolutePath());
-                    if (target == null) {
-                        publish("Batch SKIP (cannot open): " + files[i].getName());
-                        skipped++;
-                        continue;
-                    }
-                    if (target.getNSlices() < 2) {
-                        publish("Batch SKIP (not 3D): " + files[i].getName());
-                        target.close();
-                        skipped++;
-                        continue;
-                    }
-
-                    String err = saveOneToDir(target, batchAreaThreshold, batchSeedThreshold,
-                        batchAreaEnabled, params, outDir, batchRoiColor);
-                    target.close();
-                    if (err != null) {
-                        publish("Batch SKIP (" + err + "): " + files[i].getName());
-                        skipped++;
-                    } else {
-                        publish("Batch OK: " + files[i].getName());
-                        ok++;
-                    }
-                }
-                return new int[]{ok, skipped};
-            }
-
-            @Override
-            protected void process(List<String> chunks) {
-                for (String msg : chunks) IJ.log(msg);
-            }
-
-            @Override
-            protected void done() {
-                IJ.showProgress(1.0);
-                IJ.showStatus("");
-                batchBtn.setEnabled(true);
-                try {
-                    int[] counts = get();
-                    int ok = counts[0], skipped = counts[1];
-                    IJ.showMessage("Batch done",
-                        ok + " file(s) processed.\n" +
-                        (skipped > 0 ? skipped + " skipped — see Log for details.\n" : "") +
-                        "Output: " + outDir.getAbsolutePath());
-                } catch (Exception ex) {
-                    IJ.error("Batch", "Batch failed: " + ex.getMessage());
-                }
-            }
-        }.execute();
+    private static String expandFolderTokens(String pattern, String name, int seed, int area) {
+        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        return pattern
+            .replace("{name}", name)
+            .replace("{date}", date)
+            .replace("{seed}", String.valueOf(seed))
+            .replace("{area}", String.valueOf(area));
     }
 
     /**
-     * Process one image and save csv/roi/params under outDir.
-     * Returns null on success, error message string on failure.
+     * Process one image and save selected file types under outDir (flat structure).
+     * Returns null on success, error message on failure.
      */
     private static String saveOneToDir(ImagePlus target, int at, int st, boolean areaEn,
                                         QuantifierParams params, File outDir,
-                                        java.awt.Color roiColor) {
+                                        boolean saveSeedRoi, boolean saveSizeRoi,
+                                        boolean saveAreaRoi, boolean saveResultRoi,
+                                        boolean saveCsv, boolean saveParam,
+                                        Color roiColor) {
         Calibration cal = target.getCalibration();
         double tw = cal.pixelWidth  > 0 ? cal.pixelWidth  : 1;
         double th = cal.pixelHeight > 0 ? cal.pixelHeight : 1;
@@ -1175,33 +1087,359 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         SeededQuantifier3D.SeededResult r = SeededQuantifier3D.compute(
             target, at, st, params, tVoxelVol, areaEn);
         if (r == null) return "no spots detected";
-        SegmentationResult3D seg = r.finalSeg;
 
-        List<SpotMeasurement> spots = SpotMeasurer.measure(seg, target, tw, th, td);
+        String basename = target.getShortTitle().replaceAll("\\.tiff?$", "");
 
-        File csvDir    = new File(outDir, "csv");
-        File roiDir    = new File(outDir, "roi");
-        File paramsDir = new File(outDir, "params");
-        csvDir.mkdirs();
-        roiDir.mkdirs();
-        paramsDir.mkdirs();
-
-        String basename   = target.getShortTitle().replaceAll("\\.tiff?$", "");
-        File   csvFile    = new File(csvDir,    basename + "_spots.csv");
-        File   paramsFile = new File(paramsDir, basename + "_params.txt");
-        File   roiFile    = new File(roiDir,    basename + "_RoiSet.zip");
         try {
-            CsvExporter.writeCsv(spots, csvFile);
-            CsvExporter.writeSeededParams(at, st, params, paramsFile);
-            RoiManager rm = RoiManager.getRoiManager();
-            rm.reset();
-            new RoiExporter3D().exportToRoiManager(seg.labelImage, roiColor);
-            if (rm.getCount() > 0) {
-                RoiExporter.saveRoiManagerToZip(roiFile.getAbsolutePath());
+            outDir.mkdirs();
+
+            if (saveCsv) {
+                List<SpotMeasurement> spots = SpotMeasurer.measure(r.finalSeg, target, tw, th, td);
+                CsvExporter.writeCsv(spots, new File(outDir, basename + "_spots.csv"));
             }
+
+            if (saveParam) {
+                CsvExporter.writeSeededParams(at, st, params,
+                    new File(outDir, basename + "_params.txt"));
+            }
+
+            if (saveSeedRoi && r.rawSeedSeg != null) {
+                saveRoiToZip(r.rawSeedSeg, roiColor, new File(outDir, basename + "_seed_roi.zip"));
+            }
+
+            if (saveSizeRoi && r.seedSeg != null) {
+                saveRoiToZip(r.seedSeg, roiColor, new File(outDir, basename + "_size_roi.zip"));
+            }
+
+            if (saveAreaRoi) {
+                QuantifierParams noFilter = new QuantifierParams(
+                    at, null, null, false, 1.0, 0.5, params.connectivity, params.fillHoles);
+                CcResult3D areaCC = SpotQuantifier3D.computeCCFromBlurred(target, at, noFilter);
+                Map<Integer, Integer> allValidMap = new HashMap<>();
+                areaCC.voxelCounts.keySet().forEach(k -> allValidMap.put(k, CcResult3D.STATUS_VALID));
+                SegmentationResult3D areaSeg = areaCC.buildFilteredResult(allValidMap);
+                saveRoiToZip(areaSeg, roiColor, new File(outDir, basename + "_area_roi.zip"));
+            }
+
+            if (saveResultRoi && r.finalSeg != null) {
+                saveRoiToZip(r.finalSeg, roiColor, new File(outDir, basename + "_result_roi.zip"));
+            }
+
             return null;
         } catch (Exception ex) {
             return ex.getMessage();
+        }
+    }
+
+    private static void saveRoiToZip(SegmentationResult3D seg, Color roiColor, File zipFile) {
+        if (seg == null || seg.labelImage == null) return;
+        RoiManager rm = RoiManager.getRoiManager();
+        rm.reset();
+        new RoiExporter3D().exportToRoiManager(seg.labelImage, roiColor);
+        if (rm.getCount() > 0) {
+            RoiExporter.saveRoiManagerToZip(zipFile.getAbsolutePath());
+        }
+        rm.reset();
+    }
+
+    // =========================================================
+    // Batch Dialog
+    // =========================================================
+
+    private class BatchDialog extends JDialog {
+
+        private final JCheckBox bSaveSeedRoi;
+        private final JCheckBox bSaveSizeRoi;
+        private final JCheckBox bSaveAreaRoi;
+        private final JCheckBox bSaveResultRoi;
+        private final JCheckBox bSaveCsv;
+        private final JCheckBox bSaveParam;
+        private final JCheckBox bCustomFolder;
+        private final JTextField bFolderName;
+
+        private final JTextField pathField  = new JTextField(40);
+        private final JPanel     fileListPanel = new JPanel();
+        private final List<JCheckBox> fileChecks = new ArrayList<>();
+        private final JLabel     countLabel    = new JLabel("0 file(s) found");
+        private final JProgressBar progressBar = new JProgressBar();
+        private final JLabel     dlgStatus    = new JLabel(" ");
+        private       JButton    runBtn;
+
+        BatchDialog() {
+            super(SeededSpotQuantifier3DFrame.this, "Batch Processing", false);
+
+            bSaveSeedRoi   = new JCheckBox("Seed ROI",   saveSeedRoiCheck  .getState());
+            bSaveSizeRoi   = new JCheckBox("Size ROI",   saveSizeRoiCheck  .getState());
+            bSaveAreaRoi   = new JCheckBox("Area ROI",   saveAreaRoiCheck  .getState());
+            bSaveResultRoi = new JCheckBox("Result ROI", saveResultRoiCheck.getState());
+            bSaveCsv       = new JCheckBox("CSV",        saveCsvCheck      .getState());
+            bSaveParam     = new JCheckBox("Param",      saveParamCheck    .getState());
+            bCustomFolder  = new JCheckBox("Custom folder name:", customFolderCheck.getState());
+            bFolderName    = new JTextField(folderNameField.getText(), 22);
+
+            buildBatchLayout();
+        }
+
+        private void buildBatchLayout() {
+            setLayout(new BorderLayout(6, 6));
+            JPanel main = new JPanel(new BorderLayout(4, 4));
+            main.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+            // Input folder row
+            JPanel inputRow = new JPanel(new BorderLayout(4, 0));
+            inputRow.add(new JLabel("Input folder:"), BorderLayout.WEST);
+            inputRow.add(pathField, BorderLayout.CENTER);
+            JButton browseBtn = new JButton("Browse");
+            browseBtn.addActionListener(e -> browsePath());
+            inputRow.add(browseBtn, BorderLayout.EAST);
+            main.add(inputRow, BorderLayout.NORTH);
+
+            // File list
+            fileListPanel.setLayout(new BoxLayout(fileListPanel, BoxLayout.Y_AXIS));
+            JScrollPane scroll = new JScrollPane(fileListPanel);
+            scroll.setPreferredSize(new Dimension(520, 180));
+            main.add(scroll, BorderLayout.CENTER);
+
+            // Bottom section
+            JPanel bottom = new JPanel(new BorderLayout(4, 4));
+
+            JPanel listCtrl = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+            JButton selAll   = new JButton("Select All");
+            JButton deselAll = new JButton("Deselect All");
+            selAll  .addActionListener(e -> setAllFileChecks(true));
+            deselAll.addActionListener(e -> setAllFileChecks(false));
+            listCtrl.add(selAll);
+            listCtrl.add(deselAll);
+            listCtrl.add(countLabel);
+            bottom.add(listCtrl, BorderLayout.NORTH);
+
+            bottom.add(buildBatchSavePanel(), BorderLayout.CENTER);
+
+            // Progress + buttons
+            JPanel ctrlRow = new JPanel(new BorderLayout(4, 4));
+            progressBar.setStringPainted(true);
+            progressBar.setVisible(false);
+            ctrlRow.add(progressBar, BorderLayout.CENTER);
+
+            JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 2));
+            JButton cancelBtn = new JButton("Cancel");
+            cancelBtn.addActionListener(e -> dispose());
+            runBtn = new JButton("Run");
+            runBtn.addActionListener(e -> runBatchProcess());
+            btnRow.add(dlgStatus);
+            btnRow.add(cancelBtn);
+            btnRow.add(runBtn);
+            ctrlRow.add(btnRow, BorderLayout.SOUTH);
+            bottom.add(ctrlRow, BorderLayout.SOUTH);
+
+            main.add(bottom, BorderLayout.SOUTH);
+            add(main);
+
+            pathField.addActionListener(e -> scanFiles());
+            pathField.addFocusListener(new FocusAdapter() {
+                @Override public void focusLost(FocusEvent e) { scanFiles(); }
+            });
+
+            pack();
+            setLocationRelativeTo(SeededSpotQuantifier3DFrame.this);
+        }
+
+        private JPanel buildBatchSavePanel() {
+            JPanel p = new JPanel(new GridLayout(0, 1, 2, 2));
+            p.setBorder(BorderFactory.createTitledBorder("Save options"));
+
+            JPanel selRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+            JButton selAll   = new JButton("Select All");
+            JButton deselAll = new JButton("Deselect All");
+            selAll  .addActionListener(e -> setBatchSaveChecks(true));
+            deselAll.addActionListener(e -> setBatchSaveChecks(false));
+            selRow.add(selAll);
+            selRow.add(deselAll);
+            p.add(selRow);
+
+            JPanel checksRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+            checksRow.add(bSaveSeedRoi);
+            checksRow.add(bSaveSizeRoi);
+            checksRow.add(bSaveAreaRoi);
+            checksRow.add(bSaveResultRoi);
+            checksRow.add(bSaveCsv);
+            checksRow.add(bSaveParam);
+            p.add(checksRow);
+
+            JPanel folderRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+            folderRow.add(bCustomFolder);
+            folderRow.add(bFolderName);
+            folderRow.add(new JLabel("tokens: {name} {date} {seed} {area}"));
+            p.add(folderRow);
+
+            return p;
+        }
+
+        private void setBatchSaveChecks(boolean state) {
+            bSaveSeedRoi  .setSelected(state);
+            bSaveSizeRoi  .setSelected(state);
+            bSaveAreaRoi  .setSelected(state);
+            bSaveResultRoi.setSelected(state);
+            bSaveCsv      .setSelected(state);
+            bSaveParam    .setSelected(state);
+        }
+
+        private void setAllFileChecks(boolean state) {
+            for (JCheckBox cb : fileChecks) cb.setSelected(state);
+        }
+
+        private void browsePath() {
+            FileDialog fd = new FileDialog(SeededSpotQuantifier3DFrame.this,
+                "Select input folder (select any file inside it)", FileDialog.LOAD);
+            fd.setVisible(true);
+            if (fd.getDirectory() != null) {
+                pathField.setText(fd.getDirectory());
+                scanFiles();
+            }
+        }
+
+        private void scanFiles() {
+            String pathStr = pathField.getText().trim();
+            if (pathStr.isEmpty()) return;
+            File dir = new File(pathStr);
+            if (!dir.isDirectory()) return;
+
+            fileChecks.clear();
+            fileListPanel.removeAll();
+
+            List<File> tiffs = new ArrayList<>();
+            try {
+                Files.walk(dir.toPath())
+                    .filter(p -> {
+                        String n = p.getFileName().toString().toLowerCase();
+                        return n.endsWith(".tif") || n.endsWith(".tiff");
+                    })
+                    .sorted()
+                    .forEach(p -> tiffs.add(p.toFile()));
+            } catch (Exception ex) {
+                IJ.log("Batch scan error: " + ex.getMessage());
+            }
+
+            for (File f : tiffs) {
+                JCheckBox cb = new JCheckBox(f.getAbsolutePath(), true);
+                fileChecks.add(cb);
+                fileListPanel.add(cb);
+            }
+
+            countLabel.setText(tiffs.size() + " file(s) found");
+            fileListPanel.revalidate();
+            fileListPanel.repaint();
+            pack();
+        }
+
+        private void runBatchProcess() {
+            List<File> selected = new ArrayList<>();
+            for (JCheckBox cb : fileChecks) {
+                if (cb.isSelected()) selected.add(new File(cb.getText()));
+            }
+            if (selected.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No files selected.");
+                return;
+            }
+
+            runBtn.setEnabled(false);
+            progressBar.setVisible(true);
+            progressBar.setMaximum(selected.size());
+            progressBar.setValue(0);
+
+            QuantifierParams params   = buildParams();
+            int     at        = areaThreshold;
+            int     st        = seedThreshold;
+            boolean areaEn    = areaEnabled;
+            Color   roiColor  = selectedRoiColor();
+            boolean seedRoi   = bSaveSeedRoi  .isSelected();
+            boolean sizeRoi   = bSaveSizeRoi  .isSelected();
+            boolean areaRoi   = bSaveAreaRoi  .isSelected();
+            boolean resultRoi = bSaveResultRoi.isSelected();
+            boolean csv       = bSaveCsv      .isSelected();
+            boolean param     = bSaveParam    .isSelected();
+            boolean customF   = bCustomFolder .isSelected();
+            String  folderPat = bFolderName   .getText();
+
+            // 0 = ask, 1 = overwrite all, 2 = skip all
+            int[] overwriteState = {0};
+
+            new SwingWorker<int[], Void>() {
+                @Override
+                protected int[] doInBackground() {
+                    int ok = 0, skipped = 0;
+                    for (int i = 0; i < selected.size(); i++) {
+                        File f = selected.get(i);
+                        final int fi = i;
+                        EventQueue.invokeLater(() -> {
+                            progressBar.setValue(fi);
+                            dlgStatus.setText("Processing " + (fi + 1) + "/" + selected.size()
+                                + ": " + f.getName());
+                        });
+
+                        ImagePlus target = IJ.openImage(f.getAbsolutePath());
+                        if (target == null)          { skipped++; IJ.log("Batch SKIP (cannot open): " + f.getName()); continue; }
+                        if (target.getNSlices() < 2) { target.close(); skipped++; IJ.log("Batch SKIP (not 3D): " + f.getName()); continue; }
+
+                        String basename = target.getShortTitle().replaceAll("\\.tiff?$", "");
+                        String pattern  = customF ? folderPat : "{name} result";
+                        String folder   = expandFolderTokens(pattern, basename, st, at);
+                        File   outDir   = new File(f.getParent(), folder);
+
+                        if (outDir.exists()) {
+                            if (overwriteState[0] == 2) {
+                                target.close(); skipped++;
+                                IJ.log("Batch SKIP (folder exists, skip all): " + f.getName());
+                                continue;
+                            } else if (overwriteState[0] == 0) {
+                                int[] response = {-1};
+                                try {
+                                    EventQueue.invokeAndWait(() -> {
+                                        Object[] opts = {"Overwrite", "Skip", "Overwrite All", "Skip All"};
+                                        response[0] = JOptionPane.showOptionDialog(
+                                            BatchDialog.this,
+                                            "Folder already exists:\n" + outDir.getAbsolutePath(),
+                                            "Folder Exists",
+                                            JOptionPane.DEFAULT_OPTION,
+                                            JOptionPane.QUESTION_MESSAGE,
+                                            null, opts, opts[0]);
+                                    });
+                                } catch (Exception ex) { response[0] = 1; }
+
+                                if (response[0] == 1) { target.close(); skipped++; continue; }      // Skip
+                                if (response[0] == 2) { overwriteState[0] = 1; }                    // Overwrite All
+                                if (response[0] == 3) { overwriteState[0] = 2; target.close(); skipped++; continue; } // Skip All
+                                // 0 = Overwrite once — fall through
+                            }
+                            // overwriteState[0] == 1 — overwrite all, fall through
+                        }
+
+                        String err = saveOneToDir(target, at, st, areaEn, params, outDir,
+                            seedRoi, sizeRoi, areaRoi, resultRoi, csv, param, roiColor);
+                        target.close();
+                        if (err != null) {
+                            IJ.log("Batch SKIP (" + err + "): " + f.getName());
+                            skipped++;
+                        } else {
+                            ok++;
+                        }
+                    }
+                    return new int[]{ok, skipped};
+                }
+
+                @Override
+                protected void done() {
+                    IJ.showStatus("");
+                    try {
+                        int[] counts = get();
+                        progressBar.setValue(selected.size());
+                        dlgStatus.setText(counts[0] + " processed, " + counts[1] + " skipped.");
+                    } catch (Exception ex) {
+                        IJ.error("Batch", "Batch failed: " + ex.getMessage());
+                    }
+                    runBtn.setEnabled(true);
+                }
+            }.execute();
         }
     }
 
@@ -1209,34 +1447,11 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     // Helpers
     // =========================================================
 
-    private List<SpotMeasurement> computeSpots() {
-        QuantifierParams params = buildParams();
-        SeededQuantifier3D.SeededResult r = getOrComputeSeeded(params, areaThreshold,
-                                                                seedThreshold, areaEnabled);
-        if (r == null) {
-            IJ.error("Seeded Spot Quantifier 3D", "No spots detected — adjust thresholds.");
-            return null;
-        }
-        return SpotMeasurer.measure(r.finalSeg, imp, vw, vh, vd);
-    }
-
-    private SegmentationResult3D computeSeg() {
-        QuantifierParams params = buildParams();
-        SeededQuantifier3D.SeededResult r = getOrComputeSeeded(params, areaThreshold,
-                                                                seedThreshold, areaEnabled);
-        if (r == null) {
-            IJ.error("Seeded Spot Quantifier 3D", "No spots detected.");
-            return null;
-        }
-        return r.finalSeg;
-    }
-
     private QuantifierParams buildParams() {
         Double minVol = minVolEnabled ? minVolVal : null;
         Double maxVol = maxVolEnabled ? maxVolVal : null;
         int conn = Integer.parseInt(connectivityChoice.getSelectedItem());
         boolean fillH = fillHolesCheck.getState();
-        // threshold field: use areaThreshold as placeholder (SeededQuantifier3D ignores it)
         return new QuantifierParams(areaThreshold, minVol, maxVol,
             false, 1.0, 0.5, conn, fillH);
     }
@@ -1249,7 +1464,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         return Color.decode(PREVIEW_COLOR_OPTIONS[roiColorChoice.getSelectedIndex()][1]);
     }
 
-    /** Volume slider uses log scale over [volRangeMin, volRangeMax]. */
     private int volToSlider(double vol) {
         if (volRangeMax <= volRangeMin || volRangeMin <= 0) return 0;
         vol = Math.max(volRangeMin, Math.min(volRangeMax, vol));

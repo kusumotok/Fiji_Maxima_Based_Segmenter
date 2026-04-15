@@ -8,6 +8,7 @@ import ij.process.ImageProcessor;
 import jp.yourorg.fiji_maxima_based_segmenter.core.Connectivity;
 import jp.yourorg.fiji_maxima_based_segmenter.core.MarkerResult3D;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -25,18 +26,23 @@ import java.util.Map;
 public class SeededQuantifier3D {
 
     /**
-     * Compound result holding both the seed segmentation and the final segmentation.
+     * Compound result holding seed segmentation (raw + filtered) and the final segmentation.
      * When areaEnabled=false, seedSeg and finalSeg point to the same object.
      */
     public static class SeededResult {
+        /** All seed CC labels before size filter (for Seed ROI export). */
+        public final SegmentationResult3D rawSeedSeg;
         /** Size-filtered seed labels (from seed threshold CC). */
         public final SegmentationResult3D seedSeg;
         /** Final segmentation (watershed if area enabled, otherwise same as seedSeg). */
         public final SegmentationResult3D finalSeg;
 
-        public SeededResult(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg) {
-            this.seedSeg  = seedSeg;
-            this.finalSeg = finalSeg;
+        public SeededResult(SegmentationResult3D rawSeedSeg,
+                            SegmentationResult3D seedSeg,
+                            SegmentationResult3D finalSeg) {
+            this.rawSeedSeg = rawSeedSeg;
+            this.seedSeg    = seedSeg;
+            this.finalSeg   = finalSeg;
         }
     }
 
@@ -77,6 +83,11 @@ public class SeededQuantifier3D {
             if (seedCC.voxelCounts.isEmpty()) {
                 return null;
             }
+            // Raw seeds: all CC labels marked valid (no size filter)
+            Map<Integer, Integer> allValid = new HashMap<>();
+            seedCC.voxelCounts.keySet().forEach(k -> allValid.put(k, CcResult3D.STATUS_VALID));
+            SegmentationResult3D rawSeedSeg = seedCC.buildFilteredResult(allValid);
+
             Map<Integer, Integer> seedStatus = seedCC.classifyLabels(params, voxelVol);
             SegmentationResult3D filteredSeeds = seedCC.buildFilteredResult(seedStatus);
 
@@ -91,7 +102,7 @@ public class SeededQuantifier3D {
 
             // 3. If area disabled: bypass watershed, return seeds as final result
             if (!areaEnabled) {
-                return new SeededResult(filteredSeeds, filteredSeeds);
+                return new SeededResult(rawSeedSeg, filteredSeeds, filteredSeeds);
             }
 
             // 4. Build domain mask at areaThreshold
@@ -121,7 +132,7 @@ public class SeededQuantifier3D {
             Connectivity conn = Connectivity.fromInt(params.connectivity);
             MarkerResult3D markers = new MarkerResult3D(seedLabelStack, domainStack, seedCount);
             SegmentationResult3D watershedResult = new Watershed3DRunner().run(blurred, markers, conn);
-            return new SeededResult(filteredSeeds, watershedResult);
+            return new SeededResult(rawSeedSeg, filteredSeeds, watershedResult);
 
         } finally {
             if (params.gaussianBlur && blurred != imp) {
