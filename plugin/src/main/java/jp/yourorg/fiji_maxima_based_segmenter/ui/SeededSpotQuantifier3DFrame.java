@@ -42,7 +42,6 @@ import javax.swing.SwingWorker;
  *   Seed threshold:  [slider] [field]    ← high threshold (seed detection)
  *   [✓] Min vol µm³: [slider] [field]   ← seed size filter
  *   [✓] Max vol µm³: [slider] [field]
- *   [□] Gaussian blur  XY:[field] Z:[field]
  *   Connectivity: [6▼]  [□] Fill holes
  *   Preview: ○ Off  ● Overlay  ○ ROI
  *   [Apply]  ROI color: [▼]  [Add ROI]  [Save ROI]  [Save CSV]  [Save All]  [Batch…]
@@ -87,10 +86,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private final Scrollbar maxVolBar;
     private final TextField maxVolField;
 
-    private final Checkbox gaussCheck;
-    private final TextField gaussXYField;
-    private final TextField gaussZField;
-
     private final Choice   connectivityChoice;
     private final Checkbox fillHolesCheck;
 
@@ -123,9 +118,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private int     seedThreshold;
     private boolean minVolEnabled, maxVolEnabled;
     private double  minVolVal, maxVolVal;
-    private boolean gaussEnabled;
-    private double  gaussXYVal, gaussZVal;
-
     // --- Segmentation cache ---
     private SeededQuantifier3D.SeededResult cachedSeededResult;
     private String                          segCacheKey;
@@ -192,15 +184,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         maxVolField = new TextField(formatVol(maxVolVal), 7);
         maxVolField.setEnabled(maxVolEnabled);
 
-        gaussEnabled = false;
-        gaussXYVal   = 1.0;
-        gaussZVal    = 0.5;
-        gaussCheck   = new Checkbox("Gaussian blur", gaussEnabled);
-        gaussXYField = new TextField(Double.toString(gaussXYVal), 4);
-        gaussZField  = new TextField(Double.toString(gaussZVal),  4);
-        gaussXYField.setEnabled(false);
-        gaussZField .setEnabled(false);
-
         connectivityChoice = new Choice();
         connectivityChoice.add("6");
         connectivityChoice.add("18");
@@ -247,11 +230,10 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         add(top, BorderLayout.NORTH);
 
         Panel center = new Panel(new GridLayout(0, 1, 2, 2));
-        center.add(makeAreaThreshRow());
         center.add(makeThreshRow("Seed threshold:", seedThreshBar, seedThreshField));
         center.add(makeVolRow("Min vol µm³ (seed):", minVolCheck, minVolBar, minVolField));
         center.add(makeVolRow("Max vol µm³ (seed):", maxVolCheck, maxVolBar, maxVolField));
-        center.add(makeGaussRow());
+        center.add(makeAreaThreshRow());
         center.add(makeConnectivityRow());
         center.add(makePreviewRow());
         center.add(makeColorsRow());
@@ -304,16 +286,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         p.add(bar, c);
         c.gridx = 3; c.weightx = 0; c.fill = GridBagConstraints.NONE;
         p.add(field, c);
-        return p;
-    }
-
-    private Panel makeGaussRow() {
-        Panel p = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        p.add(gaussCheck);
-        p.add(new Label("XY σ:"));
-        p.add(gaussXYField);
-        p.add(new Label("Z σ:"));
-        p.add(gaussZField);
         return p;
     }
 
@@ -455,23 +427,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         maxVolField.addActionListener(e -> commitMaxVolField());
         maxVolField.addFocusListener(new FocusAdapter() {
             @Override public void focusLost(FocusEvent e) { commitMaxVolField(); }
-        });
-
-        // Gaussian blur
-        gaussCheck.addItemListener(e -> {
-            if (syncing) return;
-            gaussEnabled = gaussCheck.getState();
-            gaussXYField.setEnabled(gaussEnabled);
-            gaussZField .setEnabled(gaussEnabled);
-            onParamsChanged();
-        });
-        gaussXYField.addActionListener(e -> commitGaussXYField());
-        gaussXYField.addFocusListener(new FocusAdapter() {
-            @Override public void focusLost(FocusEvent e) { commitGaussXYField(); }
-        });
-        gaussZField.addActionListener(e -> commitGaussZField());
-        gaussZField.addFocusListener(new FocusAdapter() {
-            @Override public void focusLost(FocusEvent e) { commitGaussZField(); }
         });
 
         // Connectivity / fill holes
@@ -633,24 +588,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         maxVolBar.setValue(volToSlider(maxVolVal));
         syncing = false;
         onParamsChanged();
-    }
-
-    private void commitGaussXYField() {
-        if (syncing) return;
-        gaussXYVal = Math.max(0.1, parseDoubleOr(gaussXYField.getText(), gaussXYVal));
-        syncing = true;
-        gaussXYField.setText(Double.toString(gaussXYVal));
-        syncing = false;
-        if (gaussEnabled) onParamsChanged();
-    }
-
-    private void commitGaussZField() {
-        if (syncing) return;
-        gaussZVal = Math.max(0.1, parseDoubleOr(gaussZField.getText(), gaussZVal));
-        syncing = true;
-        gaussZField.setText(Double.toString(gaussZVal));
-        syncing = false;
-        if (gaussEnabled) onParamsChanged();
     }
 
     // =========================================================
@@ -1032,8 +969,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     }
 
     private String segKey(QuantifierParams p, int at, int st, boolean areaEn) {
-        return at + ":" + st + ":" + areaEn + ":" + p.gaussianBlur + ":" + p.gaussXY
-             + ":" + p.gaussZ + ":" + p.connectivity + ":" + p.fillHoles
+        return at + ":" + st + ":" + areaEn + ":" + p.connectivity + ":" + p.fillHoles
              + ":" + p.minVolUm3 + ":" + p.maxVolUm3;
     }
 
@@ -1300,7 +1236,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         boolean fillH = fillHolesCheck.getState();
         // threshold field: use areaThreshold as placeholder (SeededQuantifier3D ignores it)
         return new QuantifierParams(areaThreshold, minVol, maxVol,
-            gaussEnabled, gaussXYVal, gaussZVal, conn, fillH);
+            false, 1.0, 0.5, conn, fillH);
     }
 
     private Color selectedSeedPreviewColor() {

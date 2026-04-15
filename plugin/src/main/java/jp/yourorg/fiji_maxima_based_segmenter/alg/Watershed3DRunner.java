@@ -33,7 +33,7 @@ public class Watershed3DRunner {
             markerStack,
             domainStack,
             conn3d,
-            true  // use priority queue
+            false  // getDams=false: fill entire domain without treating background as implicit seed
         );
 
         ImagePlus labelImage = new ImagePlus(
