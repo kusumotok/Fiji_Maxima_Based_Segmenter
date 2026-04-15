@@ -72,9 +72,6 @@ public class CsvExporter {
             pw.println("SEED_THRESHOLD=" + seedThreshold);
             pw.println("MIN_VOL_UM3=" + (params.minVolUm3 != null ? params.minVolUm3 : ""));
             pw.println("MAX_VOL_UM3=" + (params.maxVolUm3 != null ? params.maxVolUm3 : ""));
-            pw.println("GAUSSIAN_BLUR=" + params.gaussianBlur);
-            pw.println("GAUSS_XY=" + (params.gaussianBlur ? params.gaussXY : ""));
-            pw.println("GAUSS_Z="  + (params.gaussianBlur ? params.gaussZ  : ""));
             pw.println("CONNECTIVITY=" + params.connectivity);
             pw.println("FILL_HOLES="   + params.fillHoles);
         }
@@ -91,9 +88,6 @@ public class CsvExporter {
             pw.println("THRESHOLD=" + params.threshold);
             pw.println("MIN_VOL_UM3=" + (params.minVolUm3 != null ? params.minVolUm3 : ""));
             pw.println("MAX_VOL_UM3=" + (params.maxVolUm3 != null ? params.maxVolUm3 : ""));
-            pw.println("GAUSSIAN_BLUR=" + params.gaussianBlur);
-            pw.println("GAUSS_XY=" + (params.gaussianBlur ? params.gaussXY : ""));
-            pw.println("GAUSS_Z="  + (params.gaussianBlur ? params.gaussZ  : ""));
             pw.println("CONNECTIVITY=" + params.connectivity);
             pw.println("FILL_HOLES="   + params.fillHoles);
         }
