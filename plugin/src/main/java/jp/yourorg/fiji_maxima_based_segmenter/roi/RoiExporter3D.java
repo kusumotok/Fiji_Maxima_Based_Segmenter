@@ -59,6 +59,8 @@ public class RoiExporter3D {
         int w = labelImage.getWidth();
         int h = labelImage.getHeight();
         int d = labelImage.getNSlices();
+        int nChannels = Math.max(1, labelImage.getNChannels());
+        int channel = Math.max(1, labelImage.getC());
 
         // Find all unique labels (use getPixel to handle float/int properly)
         TreeSet<Integer> labels = new TreeSet<>();
@@ -101,7 +103,8 @@ public class RoiExporter3D {
                 Roi roi = ThresholdToSelection.run(mask);
                 if (roi == null) continue;
 
-                roi.setPosition(z);
+                if (nChannels > 1) roi.setPosition(channel, z, 1);
+                else               roi.setPosition(z);
                 roi.setStrokeColor(roiColor);
                 roi.setName(String.format("obj-%03d-z%03d", label, z));
                 rm.addRoi(roi);
