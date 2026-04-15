@@ -23,6 +23,9 @@ public class HistogramPanel extends Panel {
     private boolean logScale = true;
     private static final int PAD = 8;
     private static final int HANDLE_TOL = 4;
+    private Image histogramImage;
+    private int cachedImageWidth = -1;
+    private int cachedImageHeight = -1;
 
     public interface ThresholdListener {
         void onThresholdsChanged(int tBg, int tFg);
@@ -74,17 +77,36 @@ public class HistogramPanel extends Panel {
         this.imp = imp;
         this.histogram = null; // force recompute for new image
         this.histSlice = -2;
+        invalidateHistogramImage();
         repaint();
     }
 
     public void setFgEnabled(boolean enabled) {
         this.fgEnabled = enabled;
+        invalidateHistogramImage();
         repaint();
     }
 
     public void setLogScale(boolean log) {
         this.logScale = log;
+        invalidateHistogramImage();
         repaint();
+    }
+
+    public void repaintThresholdMarkers(int oldBg, int oldFg) {
+        ensureHistogram();
+        int plotH = getHeight() - 2 * PAD;
+        if (plotH <= 0) {
+            repaint();
+            return;
+        }
+        int left = Math.min(valueToX(oldBg), valueToX(model.getTBg()));
+        int right = Math.max(valueToX(oldBg), valueToX(model.getTBg()));
+        left = Math.min(left, Math.min(valueToX(oldFg), valueToX(model.getTFg())));
+        right = Math.max(right, Math.max(valueToX(oldFg), valueToX(model.getTFg())));
+        int dirtyX = Math.max(0, left - HANDLE_TOL - 2);
+        int dirtyW = Math.max(1, right - left + (HANDLE_TOL + 2) * 2);
+        repaint(dirtyX, Math.max(0, PAD - 1), dirtyW, plotH + 3);
     }
 
     @Override
@@ -93,23 +115,10 @@ public class HistogramPanel extends Panel {
         ensureHistogram();
         int w = getWidth();
         int h = getHeight();
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, w, h);
-        g.setColor(Color.BLACK);
-        g.drawRect(PAD, PAD, w - 2 * PAD, h - 2 * PAD);
+        ensureHistogramImage(w, h);
+        g.drawImage(histogramImage, 0, 0, this);
 
-        int plotW = w - 2 * PAD;
         int plotH = h - 2 * PAD;
-        int bins = histogram.length;
-        g.setColor(Color.GRAY);
-        double scaleMax = logScale ? Math.log1p(histMax) : histMax;
-        for (int i = 0; i < bins; i++) {
-            int x = PAD + (int) Math.round(i * (plotW - 1) / (double) (bins - 1));
-            double val = logScale ? Math.log1p(histogram[i]) : histogram[i];
-            int barH = scaleMax > 0 ? (int) Math.round(val * (plotH - 2) / scaleMax) : 0;
-            g.drawLine(x, PAD + plotH - 1, x, PAD + plotH - 1 - barH);
-        }
-
         int bgX = valueToX(model.getTBg());
         int fgX = valueToX(model.getTFg());
         g.setColor(Color.BLACK);
@@ -123,6 +132,11 @@ public class HistogramPanel extends Panel {
         }
     }
 
+    @Override
+    public void update(Graphics g) {
+        paint(g);
+    }
+
     private void ensureHistogram() {
         if (imp == null) return;
         boolean is3D = imp.getNSlices() > 1;
@@ -132,6 +146,7 @@ public class HistogramPanel extends Panel {
         if (histogram != null && histSlice == slice) return;
         buildHistogram(imp, is3D);
         histSlice = slice;
+        invalidateHistogramImage();
     }
 
     /**
@@ -193,6 +208,41 @@ public class HistogramPanel extends Panel {
         histogram = hist;
         histMax = 1;
         for (int v : histogram) if (v > histMax) histMax = v;
+    }
+
+    private void ensureHistogramImage(int w, int h) {
+        if (histogramImage != null && cachedImageWidth == w && cachedImageHeight == h) return;
+
+        histogramImage = createImage(w, h);
+        cachedImageWidth = w;
+        cachedImageHeight = h;
+        Graphics ig = histogramImage.getGraphics();
+        try {
+            ig.setColor(Color.WHITE);
+            ig.fillRect(0, 0, w, h);
+            ig.setColor(Color.BLACK);
+            ig.drawRect(PAD, PAD, w - 2 * PAD, h - 2 * PAD);
+
+            int plotW = w - 2 * PAD;
+            int plotH = h - 2 * PAD;
+            int bins = histogram.length;
+            ig.setColor(Color.GRAY);
+            double scaleMax = logScale ? Math.log1p(histMax) : histMax;
+            for (int i = 0; i < bins; i++) {
+                int x = PAD + (int) Math.round(i * (plotW - 1) / (double) (bins - 1));
+                double val = logScale ? Math.log1p(histogram[i]) : histogram[i];
+                int barH = scaleMax > 0 ? (int) Math.round(val * (plotH - 2) / scaleMax) : 0;
+                ig.drawLine(x, PAD + plotH - 1, x, PAD + plotH - 1 - barH);
+            }
+        } finally {
+            ig.dispose();
+        }
+    }
+
+    private void invalidateHistogramImage() {
+        histogramImage = null;
+        cachedImageWidth = -1;
+        cachedImageHeight = -1;
     }
 
     private int valueToX(int value) {

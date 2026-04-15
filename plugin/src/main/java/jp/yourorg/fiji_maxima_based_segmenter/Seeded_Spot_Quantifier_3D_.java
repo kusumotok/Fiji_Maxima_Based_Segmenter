@@ -37,21 +37,20 @@ public class Seeded_Spot_Quantifier_3D_ implements PlugIn {
     @Override
     public void run(String arg) {
         ImagePlus imp = WindowManager.getCurrentImage();
-        if (imp == null) {
-            IJ.error("Seeded Spot Quantifier 3D", "No image is open.");
-            return;
-        }
-        if (imp.getNSlices() < 2) {
-            IJ.error("Seeded Spot Quantifier 3D", "This plugin requires a 3D image stack.");
-            return;
-        }
-
         String options = Macro.getOptions();
         boolean isMacroMode = (options != null && !options.trim().isEmpty());
 
         if (!isMacroMode) {
             new SeededSpotQuantifier3DFrame(imp).setVisible(true);
         } else {
+            if (imp == null) {
+                IJ.error("Seeded Spot Quantifier 3D", "No image is open.");
+                return;
+            }
+            if (imp.getNSlices() < 2) {
+                IJ.error("Seeded Spot Quantifier 3D", "This plugin requires a 3D image stack.");
+                return;
+            }
             runMacroMode(imp, options);
         }
     }
