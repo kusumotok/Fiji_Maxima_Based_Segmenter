@@ -884,7 +884,7 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
                 imp.getNSlices() + " slices processed.\n" +
                 "csv/" + basename + "_spots.csv\n" +
                 "roi/" + basename + "_RoiSet.zip\n" +
-                "params.txt");
+                "params/" + basename + "_params.txt");
         } else {
             IJ.error("Spot Quantifier 3D", "Save failed: " + err);
         }
@@ -909,15 +909,17 @@ public class SpotQuantifier3DFrame extends PlugInFrame {
         SegmentationResult3D seg = cc.buildFilteredResult(status);
         List<SpotMeasurement> spots = SpotMeasurer.measure(seg, target, tw, th, td);
 
-        File csvDir = new File(outDir, "csv");
-        File roiDir = new File(outDir, "roi");
+        File csvDir    = new File(outDir, "csv");
+        File roiDir    = new File(outDir, "roi");
+        File paramsDir = new File(outDir, "params");
         csvDir.mkdirs();
         roiDir.mkdirs();
+        paramsDir.mkdirs();
 
         String basename   = target.getShortTitle().replaceAll("\\.tiff?$", "");
-        File   csvFile    = new File(csvDir, basename + "_spots.csv");
-        File   paramsFile = new File(outDir, "params.txt");
-        File   roiFile    = new File(roiDir, basename + "_RoiSet.zip");
+        File   csvFile    = new File(csvDir,    basename + "_spots.csv");
+        File   paramsFile = new File(paramsDir, basename + "_params.txt");
+        File   roiFile    = new File(roiDir,    basename + "_RoiSet.zip");
         try {
             CsvExporter.writeCsv(spots, csvFile);
             CsvExporter.writeParams(params, paramsFile);
