@@ -10,6 +10,8 @@ import ij.process.ByteProcessor;
 import ij.process.ImageProcessor;
 
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.TreeSet;
 
 public class RoiExporter3D {
@@ -56,9 +58,30 @@ public class RoiExporter3D {
 
     public void exportToRoiManager(ImagePlus labelImage, Color roiColor,
                                     ImagePlus sourceImage, int sourceChannel) {
+        exportToRoiManager(RoiManager.getRoiManager(), labelImage, roiColor, sourceImage, sourceChannel);
+    }
+
+    public void exportToRoiManager(RoiManager rm, ImagePlus labelImage, Color roiColor,
+                                    ImagePlus sourceImage, int sourceChannel) {
         if (labelImage == null) {
             IJ.error("Add ROI failed", "Label image is missing.");
             return;
+        }
+        List<Roi> rois = exportToRoiList(labelImage, roiColor, sourceImage, sourceChannel);
+        if (rois.isEmpty()) {
+            IJ.log("RoiExporter3D: no objects found in label image (skipping ROI export).");
+            return;
+        }
+        for (Roi roi : rois) {
+            rm.addRoi(roi);
+        }
+    }
+
+    public List<Roi> exportToRoiList(ImagePlus labelImage, Color roiColor,
+                                     ImagePlus sourceImage, int sourceChannel) {
+        if (labelImage == null) {
+            IJ.error("Add ROI failed", "Label image is missing.");
+            return java.util.Collections.emptyList();
         }
         ImageStack stack = labelImage.getStack();
         int w = labelImage.getWidth();
@@ -82,11 +105,10 @@ public class RoiExporter3D {
         }
 
         if (labels.isEmpty()) {
-            IJ.log("RoiExporter3D: no objects found in label image (skipping ROI export).");
-            return;
+            return java.util.Collections.emptyList();
         }
 
-        RoiManager rm = RoiManager.getRoiManager();
+        List<Roi> rois = new ArrayList<Roi>();
         for (int label : labels) {
             for (int z = 1; z <= d; z++) {
                 ImageProcessor ip = stack.getProcessor(z);
@@ -114,8 +136,9 @@ public class RoiExporter3D {
                 else               roi.setPosition(z);
                 roi.setStrokeColor(roiColor);
                 roi.setName(String.format("obj-%03d-z%03d", label, z));
-                rm.addRoi(roi);
+                rois.add(roi);
             }
         }
+        return rois;
     }
 }

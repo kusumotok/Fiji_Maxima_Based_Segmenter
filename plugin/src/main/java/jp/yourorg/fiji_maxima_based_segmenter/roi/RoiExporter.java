@@ -67,6 +67,16 @@ public class RoiExporter {
         }
 
         Roi[] rois = rm.getRoisAsArray();
+        return saveRoisToZip(rois, path);
+    }
+
+    public static boolean saveRoisToZip(Roi[] rois, String path) {
+        if (path == null || path.isEmpty()) return false;
+        if (!path.toLowerCase().endsWith(".zip")) path = path + ".zip";
+        if (rois == null || rois.length == 0) {
+            IJ.error("Save ROI", "No ROIs to save.");
+            return false;
+        }
         try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(path))) {
             DataOutputStream dos = new DataOutputStream(zos);
             for (int i = 0; i < rois.length; i++) {
