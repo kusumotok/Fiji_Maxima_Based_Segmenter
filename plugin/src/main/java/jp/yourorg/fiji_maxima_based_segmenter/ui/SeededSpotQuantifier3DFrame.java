@@ -1119,7 +1119,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         ImagePlus zp = getZProjImp();
         if (zp != null) {
             reportRenderProgress(progress, "building Z-proj ROI overlay");
-            renderRoiOverlayOnZProj(seedSeg, finalSeg, areaEnabled, zp);
+            renderRoiOverlayOnZProj(seedSeg, finalSeg, areaEnabled, zp, progress);
         }
     }
 
@@ -1273,12 +1273,17 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
     private void renderRoiOverlayOnZProj(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
                                           boolean areaEn, ImagePlus zp) {
+        renderRoiOverlayOnZProj(seedSeg, finalSeg, areaEn, zp, null);
+    }
+
+    private void renderRoiOverlayOnZProj(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
+                                          boolean areaEn, ImagePlus zp, Consumer<String> progress) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
 
         if (cachedZProjAreaRois == null) {
-            cachedZProjAreaRois = buildLabelUnionRois(finalSeg.labelImage);
+            cachedZProjAreaRois = SeededSpotQuantifier3DImageSupport.buildLabelUnionRois(finalSeg.labelImage, "result", progress);
             cachedZProjSeedRois = (areaEn && seedSeg != null && seedSeg.labelImage != null)
-                                  ? buildLabelUnionRois(seedSeg.labelImage) : null;
+                                  ? SeededSpotQuantifier3DImageSupport.buildLabelUnionRois(seedSeg.labelImage, "seed", progress) : null;
         }
 
         Overlay overlay = new Overlay();
@@ -1290,35 +1295,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         for (Roi r : cachedZProjAreaRois) { r.setStrokeColor(ac); overlay.add(r); }
         zp.setOverlay(overlay);
         zp.updateAndDraw();
-    }
-
-    private static List<Roi> buildLabelUnionRois(ImagePlus labelImp) {
-        int w = labelImp.getWidth(), h = labelImp.getHeight(), d = labelImp.getNSlices();
-        TreeSet<Integer> labels = new TreeSet<>();
-        for (int z = 1; z <= d; z++) {
-            ImageProcessor ip = labelImp.getStack().getProcessor(z);
-            for (int y = 0; y < h; y++)
-                for (int x = 0; x < w; x++) {
-                    int v = (int) Math.round(ip.getPixelValue(x, y));
-                    if (v > 0) labels.add(v);
-                }
-        }
-        List<Roi> rois = new ArrayList<>();
-        for (int label : labels) {
-            ByteProcessor bp = new ByteProcessor(w, h);
-            byte[] bpix = (byte[]) bp.getPixels();
-            for (int z = 1; z <= d; z++) {
-                ImageProcessor ip = labelImp.getStack().getProcessor(z);
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++)
-                        if ((int) Math.round(ip.getPixelValue(x, y)) == label)
-                            bpix[y * w + x] = (byte) 255;
-            }
-            bp.setThreshold(255, 255, ImageProcessor.NO_LUT_UPDATE);
-            Roi roi = ThresholdToSelection.run(new ImagePlus("", bp));
-            if (roi != null) rois.add(roi);
-        }
-        return rois;
     }
 
     private void clearOverlay() {

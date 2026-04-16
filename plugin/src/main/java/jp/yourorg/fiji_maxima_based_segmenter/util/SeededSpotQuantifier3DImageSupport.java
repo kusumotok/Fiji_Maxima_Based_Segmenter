@@ -10,8 +10,11 @@ import ij.process.ImageProcessor;
 import jp.yourorg.fiji_maxima_based_segmenter.alg.SegmentationResult3D;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 
 public final class SeededSpotQuantifier3DImageSupport {
     public static final String NONE_ITEM = "None";
@@ -109,38 +112,74 @@ public final class SeededSpotQuantifier3DImageSupport {
     }
 
     public static List<Roi> buildLabelUnionRois(ImagePlus labelImp) {
+        return buildLabelUnionRois(labelImp, null, null);
+    }
+
+    public static List<Roi> buildLabelUnionRois(ImagePlus labelImp, String labelKind, Consumer<String> progress) {
         int w = labelImp.getWidth();
         int h = labelImp.getHeight();
         int d = labelImp.getNSlices();
-        TreeSet<Integer> labels = new TreeSet<>();
+
+        reportProgress(progress, phasePrefix(labelKind) + "projecting 3D labels to 2D");
+        Map<Integer, byte[]> projectionByLabel = new HashMap<Integer, byte[]>();
+        Map<Integer, int[]> bboxByLabel = new HashMap<Integer, int[]>();
         for (int z = 1; z <= d; z++) {
             ImageProcessor ip = labelImp.getStack().getProcessor(z);
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
                     int v = (int) Math.round(ip.getPixelValue(x, y));
-                    if (v > 0) labels.add(v);
+                    if (v <= 0) continue;
+                    byte[] proj = projectionByLabel.get(v);
+                    if (proj == null) {
+                        proj = new byte[w * h];
+                        projectionByLabel.put(v, proj);
+                        bboxByLabel.put(v, new int[]{x, y, x, y});
+                    } else {
+                        int[] bb = bboxByLabel.get(v);
+                        if (x < bb[0]) bb[0] = x;
+                        if (y < bb[1]) bb[1] = y;
+                        if (x > bb[2]) bb[2] = x;
+                        if (y > bb[3]) bb[3] = y;
+                    }
+                    proj[y * w + x] = (byte) 255;
                 }
             }
         }
 
         List<Roi> rois = new ArrayList<>();
+        TreeSet<Integer> labels = new TreeSet<Integer>(projectionByLabel.keySet());
+        reportProgress(progress, phasePrefix(labelKind) + "building 2D ROI outlines");
         for (int label : labels) {
-            ByteProcessor bp = new ByteProcessor(w, h);
+            byte[] proj = projectionByLabel.get(label);
+            int[] bb = bboxByLabel.get(label);
+            int x0 = bb[0];
+            int y0 = bb[1];
+            int bw = bb[2] - bb[0] + 1;
+            int bh = bb[3] - bb[1] + 1;
+            ByteProcessor bp = new ByteProcessor(bw, bh);
             byte[] bpix = (byte[]) bp.getPixels();
-            for (int z = 1; z <= d; z++) {
-                ImageProcessor ip = labelImp.getStack().getProcessor(z);
-                for (int y = 0; y < h; y++) {
-                    for (int x = 0; x < w; x++) {
-                        if ((int) Math.round(ip.getPixelValue(x, y)) == label) {
-                            bpix[y * w + x] = (byte) 255;
-                        }
-                    }
+            for (int y = 0; y < bh; y++) {
+                int srcRow = (y0 + y) * w;
+                int dstRow = y * bw;
+                for (int x = 0; x < bw; x++) {
+                    bpix[dstRow + x] = proj[srcRow + x0 + x];
                 }
             }
             bp.setThreshold(255, 255, ImageProcessor.NO_LUT_UPDATE);
             Roi roi = ThresholdToSelection.run(new ImagePlus("", bp));
-            if (roi != null) rois.add(roi);
+            if (roi != null) {
+                roi.setLocation(roi.getXBase() + x0, roi.getYBase() + y0);
+                rois.add(roi);
+            }
         }
         return rois;
+    }
+
+    private static void reportProgress(Consumer<String> progress, String message) {
+        if (progress != null) progress.accept(message);
+    }
+
+    private static String phasePrefix(String labelKind) {
+        return (labelKind == null || labelKind.isEmpty()) ? "" : labelKind + ": ";
     }
 }

@@ -1036,13 +1036,14 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
                         publish(() -> {
                             if (generation != applyGeneration.get()) return;
                             setStatusText("Applying " + row.rawImp.getShortTitle() + ": rendering current Z overlay...");
-                            if (roiMode) {
-                                renderRoiOverlay(row, result.seedSeg, result.finalSeg, areaEn,
-                                    () -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": building Z-proj ROI overlay..."));
-                            } else {
-                                renderOverlay(row, result.seedSeg, result.finalSeg, areaEn,
-                                    () -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": building Z-proj overlay..."));
-                            }
+            if (roiMode) {
+                renderRoiOverlay(row, result.seedSeg, result.finalSeg, areaEn,
+                    () -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": building Z-proj ROI overlay..."),
+                    stage -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": " + stage + "..."));
+            } else {
+                renderOverlay(row, result.seedSeg, result.finalSeg, areaEn,
+                    () -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": building Z-proj overlay..."));
+            }
                         });
                     } catch (CancellationException ex) {
                         break;
@@ -1319,11 +1320,11 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
     }
 
     private void renderRoiOverlay(TargetRow row, SegmentationResult3D seedSeg, SegmentationResult3D finalSeg, boolean areaEn) {
-        renderRoiOverlay(row, seedSeg, finalSeg, areaEn, null);
+        renderRoiOverlay(row, seedSeg, finalSeg, areaEn, null, null);
     }
 
     private void renderRoiOverlay(TargetRow row, SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
-                                  boolean areaEn, Runnable beforeZProj) {
+                                  boolean areaEn, Runnable beforeZProj, java.util.function.Consumer<String> progress) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
         int zPlane = currentZPlane(row.rawImp);
         int nSlices = finalSeg.labelImage.getNSlices();
@@ -1341,7 +1342,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         ImagePlus zProj = row.getZProjImage();
         if (zProj != null) {
             if (beforeZProj != null) beforeZProj.run();
-            renderRoiOverlayOnZProj(zProj, row, seedSeg, finalSeg, areaEn);
+            renderRoiOverlayOnZProj(zProj, row, seedSeg, finalSeg, areaEn, progress);
         }
     }
 
@@ -1387,11 +1388,17 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
 
     private void renderRoiOverlayOnZProj(ImagePlus zProj, TargetRow row, SegmentationResult3D seedSeg,
                                          SegmentationResult3D finalSeg, boolean areaEn) {
+        renderRoiOverlayOnZProj(zProj, row, seedSeg, finalSeg, areaEn, null);
+    }
+
+    private void renderRoiOverlayOnZProj(ImagePlus zProj, TargetRow row, SegmentationResult3D seedSeg,
+                                         SegmentationResult3D finalSeg, boolean areaEn,
+                                         java.util.function.Consumer<String> progress) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
         if (row.cachedZProjAreaRois == null) {
-            row.cachedZProjAreaRois = SeededSpotQuantifier3DImageSupport.buildLabelUnionRois(finalSeg.labelImage);
+            row.cachedZProjAreaRois = SeededSpotQuantifier3DImageSupport.buildLabelUnionRois(finalSeg.labelImage, "result", progress);
             row.cachedZProjSeedRois = (areaEn && seedSeg != null && seedSeg.labelImage != null)
-                ? SeededSpotQuantifier3DImageSupport.buildLabelUnionRois(seedSeg.labelImage) : null;
+                ? SeededSpotQuantifier3DImageSupport.buildLabelUnionRois(seedSeg.labelImage, "seed", progress) : null;
         }
         Overlay overlay = new Overlay();
         if (row.cachedZProjSeedRois != null) {
