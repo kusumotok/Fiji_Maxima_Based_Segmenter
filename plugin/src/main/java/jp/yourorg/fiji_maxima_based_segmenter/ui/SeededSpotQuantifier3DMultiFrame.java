@@ -849,9 +849,6 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         }
         int imgMin = min;
         int imgMax = safeImgMax(imgMin, max);
-        areaThreshold = Math.max(imgMin, Math.min(imgMax, areaThreshold));
-        seedThreshold = Math.max(imgMin, Math.min(imgMax, seedThreshold));
-        if (seedThreshold < areaThreshold) seedThreshold = areaThreshold;
         model.setTBg(areaThreshold);
         model.setTFg(seedThreshold);
         syncing = true;

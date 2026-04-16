@@ -591,14 +591,11 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
         int imgMin = model.getMinValue();
         int imgMax = safeImgMax(imgMin, model.getMaxValue());
-        areaThreshold = Math.max(imgMin, Math.min(imgMax, areaThreshold));
-        seedThreshold = Math.max(imgMin, Math.min(imgMax, seedThreshold));
-        if (seedThreshold < areaThreshold) seedThreshold = areaThreshold;
-        model.setTBg(areaThreshold);
-        model.setTFg(seedThreshold);
 
         syncing = true;
         updateThreshSliderRanges(imgMin, imgMax);
+        model.setTBg(areaThreshold);
+        model.setTFg(seedThreshold);
         areaThreshField.setText(Integer.toString(areaThreshold));
         seedThreshField.setText(Integer.toString(seedThreshold));
         refreshProcessingImageChoices();
@@ -615,9 +612,6 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
     private void updateThreshSliderRanges(int imgMin, int imgMax) {
         int max = safeImgMax(imgMin, imgMax);
-        areaThreshold = Math.max(imgMin, Math.min(max, areaThreshold));
-        seedThreshold = Math.max(imgMin, Math.min(max, seedThreshold));
-        if (seedThreshold < areaThreshold) seedThreshold = areaThreshold;
         areaThreshBar.setValues(areaThreshold, 1, imgMin, max + 1);
         seedThreshBar.setValues(seedThreshold, 1, imgMin, max + 1);
     }
