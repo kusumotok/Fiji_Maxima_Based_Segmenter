@@ -1004,8 +1004,11 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
                     ImagePlus proc = SeededSpotQuantifier3DImageSupport.extractProcessingImage(row.rawImp, selectedCh);
                     boolean owned = proc != row.rawImp;
                     try {
+                        publish(() -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": extracting channel..."));
                         SeededQuantifier3D.SeededResult result = SeededQuantifier3D.compute(
-                            proc, at, st, params, computeVoxelVol(proc), areaEn);
+                            proc, at, st, params, computeVoxelVol(proc), areaEn,
+                            stage -> publish(() -> setStatusText(
+                                "Applying " + row.rawImp.getShortTitle() + ": " + stage + "...")));
                         row.previewResult = result;
                         row.lastRenderedZ = currentZPlane(row.rawImp);
                         if (result == null || SeededSpotQuantifier3DImageSupport.countLabels(result.finalSeg) == 0) {
@@ -1017,6 +1020,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
                         if (row.getZProjImage() != null) summary.zProjUpdatedCount++;
                         publish(() -> {
                             if (generation != applyGeneration.get()) return;
+                            setStatusText("Applying " + row.rawImp.getShortTitle() + ": rendering overlay...");
                             if (roiMode) renderRoiOverlay(row, result.seedSeg, result.finalSeg, areaEn);
                             else renderOverlay(row, result.seedSeg, result.finalSeg, areaEn);
                         });

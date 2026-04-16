@@ -10,6 +10,7 @@ import jp.yourorg.fiji_maxima_based_segmenter.core.MarkerResult3D;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Two-pass seeded watershed segmentation for Seeded Spot Quantifier 3D.
@@ -64,6 +65,16 @@ public class SeededQuantifier3D {
                                        QuantifierParams params,
                                        double voxelVol,
                                        boolean areaEnabled) {
+        return compute(imp, areaThreshold, seedThreshold, params, voxelVol, areaEnabled, null);
+    }
+
+    public static SeededResult compute(ImagePlus imp,
+                                       int areaThreshold,
+                                       int seedThreshold,
+                                       QuantifierParams params,
+                                       double voxelVol,
+                                       boolean areaEnabled,
+                                       Consumer<String> progress) {
         int w = imp.getWidth();
         int h = imp.getHeight();
         int d = imp.getNSlices();
@@ -71,6 +82,7 @@ public class SeededQuantifier3D {
         // 1. Apply Gaussian blur once (if enabled) on a working copy
         ImagePlus blurred = imp;
         if (params.gaussianBlur) {
+            reportProgress(progress, "blurring");
             blurred = imp.duplicate();
             blurred.setTitle(imp.getShortTitle() + "-blurred");
             IJ.run(blurred, "Gaussian Blur 3D...",
@@ -79,6 +91,7 @@ public class SeededQuantifier3D {
 
         try {
             // 2. Seed detection: CC at seedThreshold + size filter
+            reportProgress(progress, "finding seed components");
             CcResult3D seedCC = SpotQuantifier3D.computeCCFromBlurred(blurred, seedThreshold, params);
             if (seedCC.voxelCounts.isEmpty()) {
                 return null;
@@ -88,6 +101,7 @@ public class SeededQuantifier3D {
             seedCC.voxelCounts.keySet().forEach(k -> allValid.put(k, CcResult3D.STATUS_VALID));
             SegmentationResult3D rawSeedSeg = seedCC.buildFilteredResult(allValid);
 
+            reportProgress(progress, "filtering seed components");
             Map<Integer, Integer> seedStatus = seedCC.classifyLabels(params, voxelVol);
             SegmentationResult3D filteredSeeds = seedCC.buildFilteredResult(seedStatus);
 
@@ -106,6 +120,7 @@ public class SeededQuantifier3D {
             }
 
             // 4. Build domain mask at areaThreshold
+            reportProgress(progress, "building area mask");
             ImageStack blurredStack = blurred.getStack();
             ImageStack domainStack  = new ImageStack(w, h);
             for (int z = 1; z <= d; z++) {
@@ -122,12 +137,14 @@ public class SeededQuantifier3D {
                 domainStack.addSlice(bp);
             }
             if (params.fillHoles) {
+                reportProgress(progress, "filling mask holes");
                 ImagePlus domainImp = new ImagePlus("domain", domainStack);
                 IJ.run(domainImp, "Fill Holes", "stack");
                 domainStack = domainImp.getStack();
             }
 
             // 5. Seeded watershed: expand seeds within domain
+            reportProgress(progress, "running watershed");
             ImageStack seedLabelStack = filteredSeeds.labelImage.getStack();
             Connectivity conn = Connectivity.fromInt(params.connectivity);
             MarkerResult3D markers = new MarkerResult3D(seedLabelStack, domainStack, seedCount);
@@ -139,5 +156,9 @@ public class SeededQuantifier3D {
                 blurred.close();
             }
         }
+    }
+
+    private static void reportProgress(Consumer<String> progress, String message) {
+        if (progress != null) progress.accept(message);
     }
 }

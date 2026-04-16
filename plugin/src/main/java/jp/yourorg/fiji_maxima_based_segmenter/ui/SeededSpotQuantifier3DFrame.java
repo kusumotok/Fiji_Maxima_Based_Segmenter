@@ -1301,13 +1301,13 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     // =========================================================
 
     private synchronized SeededQuantifier3D.SeededResult getOrComputeSeeded(
-            QuantifierParams params, int at, int st, boolean areaEn) {
+            QuantifierParams params, int at, int st, boolean areaEn, Consumer<String> progress) {
         String key = segKey(params, at, st, areaEn);
         if (segCacheKey != null && segCacheKey.equals(key) && cachedSeededResult != null) {
             return cachedSeededResult;
         }
         try {
-            cachedSeededResult = SeededQuantifier3D.compute(imp, at, st, params, voxelVol, areaEn);
+            cachedSeededResult = SeededQuantifier3D.compute(imp, at, st, params, voxelVol, areaEn, progress);
             segCacheKey        = key;
             return cachedSeededResult;
         } catch (Exception ex) {
@@ -1342,7 +1342,11 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         boolean areaEn = areaEnabled;
         previewTask = new TimerTask() {
             @Override public void run() {
-                SeededQuantifier3D.SeededResult r = getOrComputeSeeded(params, at, st, areaEn);
+                SeededQuantifier3D.SeededResult r = getOrComputeSeeded(params, at, st, areaEn,
+                    stage -> EventQueue.invokeLater(() -> {
+                        if (previewGen.get() != gen) return;
+                        setStatusText("Applying: " + stage + "...");
+                    }));
                 if (r == null || previewGen.get() != gen) {
                     EventQueue.invokeLater(() -> setStatusText("No spots found."));
                     return;
@@ -1352,6 +1356,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                 IJ.showStatus("Seeded Spot Quantifier 3D: " + msg);
                 EventQueue.invokeLater(() -> {
                     if (previewGen.get() != gen) return;
+                    setStatusText("Applying: rendering overlay...");
                     if (roiMode) renderRoiOverlay(r.seedSeg, r.finalSeg, areaEn, zPlane);
                     else         renderOverlay(r.seedSeg, r.finalSeg, areaEn, zPlane);
                     setStatusText(msg);
