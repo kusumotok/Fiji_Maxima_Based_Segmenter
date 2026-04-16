@@ -42,6 +42,8 @@ import java.awt.Rectangle;
 import java.awt.Scrollbar;
 import java.awt.TextField;
 import java.awt.Window;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.ItemEvent;
@@ -118,6 +120,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
     private final Button saveToggleBtn        = new Button("\u25bc Save options");
     private boolean saveSectionExpanded = true;
     private Panel saveOptionsPanel;
+    private Panel saveChecksGrid;
     private Panel rightCenterPanel;
 
     private final Choice seedColorChoice;
@@ -166,9 +169,9 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
 
         areaEnabledCheck = new Checkbox("", areaEnabled);
         areaThreshBar = new Scrollbar(Scrollbar.HORIZONTAL, areaThreshold, 1, imgMin, imgMax + 1);
-        areaThreshField = new TextField(Integer.toString(areaThreshold), 6);
+        areaThreshField = new TextField(Integer.toString(areaThreshold), 7);
         seedThreshBar = new Scrollbar(Scrollbar.HORIZONTAL, seedThreshold, 1, imgMin, imgMax + 1);
-        seedThreshField = new TextField(Integer.toString(seedThreshold), 6);
+        seedThreshField = new TextField(Integer.toString(seedThreshold), 7);
         minVolCheck = new Checkbox("", minVolEnabled);
         minVolBar = makeVolBar(minVolVal);
         minVolField = new TextField(formatVol(minVolVal), 7);
@@ -408,15 +411,10 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         c.gridy = row++;
         p.add(selectRow, c);
 
-        Panel checksGrid = new Panel(new GridLayout(0, 1, 0, 2));
-        checksGrid.add(saveSeedRoiCheck);
-        checksGrid.add(saveSizeRoiCheck);
-        checksGrid.add(saveAreaRoiCheck);
-        checksGrid.add(saveResultRoiCheck);
-        checksGrid.add(saveCsvCheck);
-        checksGrid.add(saveParamCheck);
+        saveChecksGrid = new Panel();
+        rebuildSaveChecksGrid();
         c.gridy = row++;
-        p.add(checksGrid, c);
+        p.add(saveChecksGrid, c);
 
         Panel folderRow = new Panel(new GridBagLayout());
         GridBagConstraints fc = new GridBagConstraints();
@@ -567,6 +565,11 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveAllBtn.addActionListener(e -> runSaveAll());
         saveToExecBtn.addActionListener(e -> runSaveTo());
         cancelBtn.addActionListener(e -> cancelCurrentOperation());
+        addComponentListener(new ComponentAdapter() {
+            @Override public void componentResized(ComponentEvent e) {
+                updateSaveChecksColumns();
+            }
+        });
 
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) {
@@ -693,6 +696,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveSectionExpanded = !saveSectionExpanded;
         saveOptionsPanel.setVisible(saveSectionExpanded);
         saveToggleBtn.setLabel(saveSectionExpanded ? "\u25bc Save options" : "\u25b6 Save options");
+        updateSaveChecksColumns();
         rightCenterPanel.validate();
         pack();
         setSize(currentWidth, getHeight());
@@ -1031,9 +1035,14 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
                         if (row.getZProjImage() != null) summary.zProjUpdatedCount++;
                         publish(() -> {
                             if (generation != applyGeneration.get()) return;
-                            setStatusText("Applying " + row.rawImp.getShortTitle() + ": rendering overlay...");
-                            if (roiMode) renderRoiOverlay(row, result.seedSeg, result.finalSeg, areaEn);
-                            else renderOverlay(row, result.seedSeg, result.finalSeg, areaEn);
+                            setStatusText("Applying " + row.rawImp.getShortTitle() + ": rendering current Z overlay...");
+                            if (roiMode) {
+                                renderRoiOverlay(row, result.seedSeg, result.finalSeg, areaEn,
+                                    () -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": building Z-proj ROI overlay..."));
+                            } else {
+                                renderOverlay(row, result.seedSeg, result.finalSeg, areaEn,
+                                    () -> setStatusText("Applying " + row.rawImp.getShortTitle() + ": building Z-proj overlay..."));
+                            }
                         });
                     } catch (CancellationException ex) {
                         break;
@@ -1218,6 +1227,41 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         if (activeWorker != null) activeWorker.cancel(true);
     }
 
+    private void rebuildSaveChecksGrid() {
+        if (saveChecksGrid == null) return;
+        int cols = currentSaveChecksColumns();
+        saveChecksGrid.removeAll();
+        saveChecksGrid.setLayout(new GridLayout(0, cols, 8, 2));
+        saveChecksGrid.add(saveSeedRoiCheck);
+        saveChecksGrid.add(saveSizeRoiCheck);
+        saveChecksGrid.add(saveAreaRoiCheck);
+        saveChecksGrid.add(saveResultRoiCheck);
+        saveChecksGrid.add(saveCsvCheck);
+        saveChecksGrid.add(saveParamCheck);
+    }
+
+    private void updateSaveChecksColumns() {
+        if (saveChecksGrid == null) return;
+        int cols = currentSaveChecksColumns();
+        GridLayout layout = (GridLayout) saveChecksGrid.getLayout();
+        if (layout.getColumns() == cols) return;
+        rebuildSaveChecksGrid();
+        saveChecksGrid.validate();
+        saveChecksGrid.repaint();
+        if (saveOptionsPanel != null) {
+            saveOptionsPanel.validate();
+            saveOptionsPanel.repaint();
+        }
+    }
+
+    private int currentSaveChecksColumns() {
+        int width = saveOptionsPanel != null ? saveOptionsPanel.getWidth() : 0;
+        if (width <= 0) width = getWidth();
+        if (width >= 520) return 3;
+        if (width >= 340) return 2;
+        return 1;
+    }
+
     private void renderPreviewForRow(TargetRow row, SeededQuantifier3D.SeededResult result) {
         if (result == null) {
             clearOverlay(row);
@@ -1228,6 +1272,11 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
     }
 
     private void renderOverlay(TargetRow row, SegmentationResult3D seedSeg, SegmentationResult3D finalSeg, boolean areaEn) {
+        renderOverlay(row, seedSeg, finalSeg, areaEn, null);
+    }
+
+    private void renderOverlay(TargetRow row, SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
+                               boolean areaEn, Runnable beforeZProj) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
         int zPlane = currentZPlane(row.rawImp);
         int nSlices = finalSeg.labelImage.getNSlices();
@@ -1263,10 +1312,18 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         row.lastRenderedZ = zPlane;
 
         ImagePlus zProj = row.getZProjImage();
-        if (zProj != null) renderOverlayOnZProj(zProj, seedSeg, finalSeg, areaEn);
+        if (zProj != null) {
+            if (beforeZProj != null) beforeZProj.run();
+            renderOverlayOnZProj(zProj, seedSeg, finalSeg, areaEn);
+        }
     }
 
     private void renderRoiOverlay(TargetRow row, SegmentationResult3D seedSeg, SegmentationResult3D finalSeg, boolean areaEn) {
+        renderRoiOverlay(row, seedSeg, finalSeg, areaEn, null);
+    }
+
+    private void renderRoiOverlay(TargetRow row, SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
+                                  boolean areaEn, Runnable beforeZProj) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
         int zPlane = currentZPlane(row.rawImp);
         int nSlices = finalSeg.labelImage.getNSlices();
@@ -1282,7 +1339,10 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         row.lastRenderedZ = zPlane;
 
         ImagePlus zProj = row.getZProjImage();
-        if (zProj != null) renderRoiOverlayOnZProj(zProj, row, seedSeg, finalSeg, areaEn);
+        if (zProj != null) {
+            if (beforeZProj != null) beforeZProj.run();
+            renderRoiOverlayOnZProj(zProj, row, seedSeg, finalSeg, areaEn);
+        }
     }
 
     private void renderOverlayOnZProj(ImagePlus zProj, SegmentationResult3D seedSeg, SegmentationResult3D finalSeg, boolean areaEn) {

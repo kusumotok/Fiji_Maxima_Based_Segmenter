@@ -71,10 +71,10 @@ public class CsvExporter {
                 new OutputStreamWriter(new FileOutputStream(out), StandardCharsets.UTF_8)))) {
             pw.println("# Seeded Spot Quantifier 3D -- session params");
             pw.println("# TIMESTAMP=" + timestamp);
-            pw.println("AREA_THRESHOLD=" + areaThreshold);
             pw.println("SEED_THRESHOLD=" + seedThreshold);
             pw.println("MIN_VOL_UM3=" + (params.minVolUm3 != null ? params.minVolUm3 : ""));
             pw.println("MAX_VOL_UM3=" + (params.maxVolUm3 != null ? params.maxVolUm3 : ""));
+            pw.println("AREA_THRESHOLD=" + areaThreshold);
             pw.println("CONNECTIVITY=" + params.connectivity);
             pw.println("FILL_HOLES="   + params.fillHoles);
         }

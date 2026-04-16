@@ -116,6 +116,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private final Button    saveToggleBtn      = new Button("\u25bc Save options");
     private       boolean   saveSectionExpanded = true;
     private       Panel     saveOptionsPanel;
+    private       Panel     saveChecksGrid;
     private       Panel     centerPanel;
 
     private final Choice    seedColorChoice;
@@ -187,10 +188,10 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
         areaEnabledCheck = new Checkbox("", areaEnabled);
         areaThreshBar    = new Scrollbar(Scrollbar.HORIZONTAL, areaThreshold, 1, imgMin, imgMax + 1);
-        areaThreshField  = new TextField(Integer.toString(areaThreshold), 6);
+        areaThreshField  = new TextField(Integer.toString(areaThreshold), 7);
 
         seedThreshBar   = new Scrollbar(Scrollbar.HORIZONTAL, seedThreshold, 1, imgMin, imgMax + 1);
-        seedThreshField = new TextField(Integer.toString(seedThreshold), 6);
+        seedThreshField = new TextField(Integer.toString(seedThreshold), 7);
 
         minVolEnabled = true;
         maxVolEnabled = false;
@@ -452,15 +453,10 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         c.gridy = row++;
         p.add(selectRow, c);
 
-        Panel checksGrid = new Panel(new GridLayout(0, 1, 0, 2));
-        checksGrid.add(saveSeedRoiCheck);
-        checksGrid.add(saveSizeRoiCheck);
-        checksGrid.add(saveAreaRoiCheck);
-        checksGrid.add(saveResultRoiCheck);
-        checksGrid.add(saveCsvCheck);
-        checksGrid.add(saveParamCheck);
+        saveChecksGrid = new Panel();
+        rebuildSaveChecksGrid();
         c.gridy = row++;
-        p.add(checksGrid, c);
+        p.add(saveChecksGrid, c);
 
         Panel folderRow = new Panel(new GridBagLayout());
         GridBagConstraints fc = new GridBagConstraints();
@@ -800,6 +796,11 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         customFolderCheck.addItemListener(e -> updateTargetAvailability());
         saveToExecBtn.addActionListener(e -> runSaveTo());
         cancelBtn.addActionListener(e -> cancelCurrentOperation());
+        addComponentListener(new ComponentAdapter() {
+            @Override public void componentResized(ComponentEvent e) {
+                updateSaveChecksColumns();
+            }
+        });
 
         applyBtn  .addActionListener(e -> runApply());
         saveAllBtn.addActionListener(e -> runSaveAll());
@@ -817,6 +818,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         saveSectionExpanded = !saveSectionExpanded;
         saveOptionsPanel.setVisible(saveSectionExpanded);
         saveToggleBtn.setLabel(saveSectionExpanded ? "\u25bc Save options" : "\u25b6 Save options");
+        updateSaveChecksColumns();
         centerPanel.validate();
         pack();
         setSize(currentWidth, getHeight());
@@ -1015,9 +1017,15 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
 
     private void renderOverlay(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
                                 boolean areaEn, int zPlane) {
+        renderOverlay(seedSeg, finalSeg, areaEn, zPlane, null);
+    }
+
+    private void renderOverlay(SegmentationResult3D seedSeg, SegmentationResult3D finalSeg,
+                                boolean areaEn, int zPlane, Consumer<String> progress) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
         int nSlices = finalSeg.labelImage.getNSlices();
         if (zPlane < 1 || zPlane > nSlices) return;
+        reportRenderProgress(progress, "rendering current Z overlay");
 
         ImageProcessor finalIp = finalSeg.labelImage.getStack().getProcessor(zPlane);
         int w = finalIp.getWidth(), h = finalIp.getHeight();
@@ -1058,7 +1066,10 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         }
 
         ImagePlus zp = getZProjImp();
-        if (zp != null) renderOverlayOnZProj(seedSeg, finalSeg, areaEn, zp);
+        if (zp != null) {
+            reportRenderProgress(progress, "building Z-proj overlay");
+            renderOverlayOnZProj(seedSeg, finalSeg, areaEn, zp);
+        }
     }
 
     private static int toRgbSolid(Color c) {
@@ -1077,9 +1088,17 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private void renderRoiOverlay(SegmentationResult3D seedSeg,
                                    SegmentationResult3D finalSeg,
                                    boolean areaEnabled, int zPlane) {
+        renderRoiOverlay(seedSeg, finalSeg, areaEnabled, zPlane, null);
+    }
+
+    private void renderRoiOverlay(SegmentationResult3D seedSeg,
+                                   SegmentationResult3D finalSeg,
+                                   boolean areaEnabled, int zPlane,
+                                   Consumer<String> progress) {
         if (finalSeg == null || finalSeg.labelImage == null) return;
         int nSlices = finalSeg.labelImage.getNSlices();
         if (zPlane < 1 || zPlane > nSlices) return;
+        reportRenderProgress(progress, "rendering current Z ROI overlay");
 
         Overlay overlay = new Overlay();
 
@@ -1098,7 +1117,10 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         }
 
         ImagePlus zp = getZProjImp();
-        if (zp != null) renderRoiOverlayOnZProj(seedSeg, finalSeg, areaEnabled, zp);
+        if (zp != null) {
+            reportRenderProgress(progress, "building Z-proj ROI overlay");
+            renderRoiOverlayOnZProj(seedSeg, finalSeg, areaEnabled, zp);
+        }
     }
 
     private static void addLabelOutlines(ImageProcessor labelIp, Color color, Overlay overlay) {
@@ -1369,9 +1391,10 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                     IJ.showStatus("Seeded Spot Quantifier 3D: " + msg);
                     EventQueue.invokeLater(() -> {
                         if (previewGen.get() != gen) return;
-                        setStatusText("Applying: rendering overlay...");
-                        if (roiMode) renderRoiOverlay(r.seedSeg, r.finalSeg, areaEn, zPlane);
-                        else         renderOverlay(r.seedSeg, r.finalSeg, areaEn, zPlane);
+                        if (roiMode) renderRoiOverlay(r.seedSeg, r.finalSeg, areaEn, zPlane,
+                            stage -> setStatusText("Applying: " + stage + "..."));
+                        else renderOverlay(r.seedSeg, r.finalSeg, areaEn, zPlane,
+                            stage -> setStatusText("Applying: " + stage + "..."));
                         setStatusText(msg);
                         endOperation();
                     });
@@ -1501,6 +1524,45 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         previewGen.incrementAndGet();
         cancelPreviewTask();
         if (activeWorker != null) activeWorker.cancel(true);
+    }
+
+    private static void reportRenderProgress(Consumer<String> progress, String message) {
+        if (progress != null) progress.accept(message);
+    }
+
+    private void rebuildSaveChecksGrid() {
+        if (saveChecksGrid == null) return;
+        int cols = currentSaveChecksColumns();
+        saveChecksGrid.removeAll();
+        saveChecksGrid.setLayout(new GridLayout(0, cols, 8, 2));
+        saveChecksGrid.add(saveSeedRoiCheck);
+        saveChecksGrid.add(saveSizeRoiCheck);
+        saveChecksGrid.add(saveAreaRoiCheck);
+        saveChecksGrid.add(saveResultRoiCheck);
+        saveChecksGrid.add(saveCsvCheck);
+        saveChecksGrid.add(saveParamCheck);
+    }
+
+    private void updateSaveChecksColumns() {
+        if (saveChecksGrid == null) return;
+        int cols = currentSaveChecksColumns();
+        GridLayout layout = (GridLayout) saveChecksGrid.getLayout();
+        if (layout.getColumns() == cols) return;
+        rebuildSaveChecksGrid();
+        saveChecksGrid.validate();
+        saveChecksGrid.repaint();
+        if (saveOptionsPanel != null) {
+            saveOptionsPanel.validate();
+            saveOptionsPanel.repaint();
+        }
+    }
+
+    private int currentSaveChecksColumns() {
+        int width = saveOptionsPanel != null ? saveOptionsPanel.getWidth() : 0;
+        if (width <= 0) width = getWidth();
+        if (width >= 520) return 3;
+        if (width >= 340) return 2;
+        return 1;
     }
 
     // =========================================================
