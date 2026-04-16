@@ -12,6 +12,7 @@ import jp.yourorg.fiji_maxima_based_segmenter.roi.RoiExporter;
 import jp.yourorg.fiji_maxima_based_segmenter.roi.RoiExporter3D;
 import jp.yourorg.fiji_maxima_based_segmenter.ui.SeededSpotQuantifier3DFrame;
 import jp.yourorg.fiji_maxima_based_segmenter.util.CsvExporter;
+import jp.yourorg.fiji_maxima_based_segmenter.util.SeededSpotQuantifier3DSaveSupport;
 
 import java.io.File;
 import java.util.List;
@@ -106,7 +107,7 @@ public class Seeded_Spot_Quantifier_3D_ implements PlugIn {
             if (!csvDir.exists()) csvDir.mkdirs();
             if (!roiDir.exists()) roiDir.mkdirs();
 
-            String basename = imp.getShortTitle().replaceAll("\\.tiff?$", "");
+            String basename = SeededSpotQuantifier3DSaveSupport.saveBaseName(imp);
 
             File csvFile    = new File(csvDir, basename + "_spots.csv");
             File paramsFile = new File(dir, "params.txt");
@@ -116,7 +117,7 @@ public class Seeded_Spot_Quantifier_3D_ implements PlugIn {
             if (!spots.isEmpty()) {
                 RoiManager rm = RoiManager.getRoiManager();
                 rm.reset();
-                new RoiExporter3D().exportToRoiManager(seg.labelImage);
+                new RoiExporter3D().exportToRoiManager(seg.labelImage, RoiExporter3D.DEFAULT_ROI_COLOR, imp, Math.max(1, imp.getC()));
                 if (rm.getCount() > 0) {
                     File roiFile = new File(roiDir, basename + "_RoiSet.zip");
                     RoiExporter.saveRoiManagerToZip(roiFile.getAbsolutePath());

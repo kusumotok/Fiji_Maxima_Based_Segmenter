@@ -15,7 +15,7 @@ import java.util.List;
 public class CsvExporter {
 
     private static final String CSV_HEADER =
-        "spot_id,volume_um3,volume_vox,integrated_intensity,mean_intensity," +
+        "spot_id,volume_um3,volume_vox,surface_area_um2,integrated_intensity,mean_intensity,max_intensity," +
         "centroid_x_um,centroid_y_um,centroid_z_um";
 
     /**
@@ -30,12 +30,14 @@ public class CsvExporter {
                 new OutputStreamWriter(new FileOutputStream(out), StandardCharsets.UTF_8)))) {
             pw.println(CSV_HEADER);
             for (SpotMeasurement s : spots) {
-                pw.printf("%d,%.6f,%d,%.2f,%.4f,%.4f,%.4f,%.4f%n",
+                pw.printf("%d,%.6f,%d,%.6f,%.2f,%.4f,%.2f,%.4f,%.4f,%.4f%n",
                     s.id,
                     s.volumeUm3,
                     s.volumeVox,
+                    s.surfaceAreaUm2,
                     s.integratedIntensity,
                     s.meanIntensity,
+                    s.maxIntensity,
                     s.centroidXUm,
                     s.centroidYUm,
                     s.centroidZUm);

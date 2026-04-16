@@ -111,8 +111,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
     private final Checkbox saveParamCheck     = new Checkbox("Param",      true);
     private final Checkbox customFolderCheck  = new Checkbox("Custom folder name:", false);
     private final TextField folderNameField   = new TextField("{name} result", 22);
-    private final TextField saveToField       = new TextField("", 22);
-    private final Button saveToBtn            = new Button("Save to...");
+    private final Button    saveToExecBtn     = new Button("Save to...");
     private final Button saveToggleBtn        = new Button("\u25bc Save options");
     private boolean saveSectionExpanded = true;
     private Panel saveOptionsPanel;
@@ -144,7 +143,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
 
     private final Timer zWatchTimer = new Timer("ssq3d-multi-zwatch", true);
     private final AtomicInteger applyGeneration = new AtomicInteger();
-    private File selectedSaveDir;
+    private boolean cleanupDone = false;
 
     public SeededSpotQuantifier3DMultiFrame() {
         super("Seeded Spot Quantifier 3D Multi");
@@ -194,7 +193,6 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         }
         seedColorChoice.select(1);
         roiColorChoice.select(0);
-        saveToField.setEditable(false);
 
         histogramPanel = new HistogramPanel(representativeImp, model, this::onHistogramThresholds);
         histogramPanel.setFgEnabled(true);
@@ -215,6 +213,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         Panel buttons = new Panel(new FlowLayout(FlowLayout.RIGHT, 4, 4));
         buttons.add(applyBtn);
         buttons.add(saveAllBtn);
+        buttons.add(saveToExecBtn);
         add(buttons, BorderLayout.SOUTH);
     }
 
@@ -405,24 +404,6 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         c.gridy = row++;
         p.add(folderRow, c);
 
-        Panel saveToRow = new Panel(new GridBagLayout());
-        GridBagConstraints sc = new GridBagConstraints();
-        sc.gridy = 0;
-        sc.insets = new Insets(0, 0, 0, 4);
-        sc.anchor = GridBagConstraints.WEST;
-        sc.gridx = 0;
-        saveToRow.add(new Label("Save to:"), sc);
-        sc.gridx = 1;
-        sc.weightx = 1.0;
-        sc.fill = GridBagConstraints.HORIZONTAL;
-        saveToRow.add(saveToField, sc);
-        sc.gridx = 2;
-        sc.weightx = 0;
-        sc.fill = GridBagConstraints.NONE;
-        saveToRow.add(saveToBtn, sc);
-        c.gridy = row++;
-        p.add(saveToRow, c);
-
         Panel tokensRow = new Panel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         tokensRow.add(new Label("tokens: {name} {date} {seed} {area}"));
         c.gridy = row;
@@ -546,7 +527,6 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         seedColorChoice.addItemListener(e -> rerenderAppliedOverlays());
         roiColorChoice.addItemListener(e -> rerenderAppliedOverlays());
         customFolderCheck.addItemListener(e -> updateControlStates());
-        saveToBtn.addActionListener(e -> chooseSaveDirectory());
         overlayOpacityField.addActionListener(e -> rerenderAppliedOverlays());
         overlayOpacityField.addFocusListener(new FocusAdapter() {
             @Override public void focusLost(FocusEvent e) { rerenderAppliedOverlays(); }
@@ -555,16 +535,37 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveToggleBtn.addActionListener(e -> toggleSaveSection());
         applyBtn.addActionListener(e -> runApply());
         saveAllBtn.addActionListener(e -> runSaveAll());
+        saveToExecBtn.addActionListener(e -> runSaveTo());
 
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) {
-                clearAllOverlays();
-                zWatchTimer.cancel();
-                closeSelectorDialog();
-                SeededSpotQuantifier3DImageSupport.disposeProcessingImage(representativeImp, ownsRepresentativeImp);
                 dispose();
             }
         });
+    }
+
+    @Override
+    public void dispose() {
+        cleanupResources();
+        super.dispose();
+    }
+
+    private void cleanupResources() {
+        if (cleanupDone) return;
+        cleanupDone = true;
+        applyGeneration.incrementAndGet();
+        clearAllOverlays();
+        zWatchTimer.cancel();
+        closeSelectorDialog();
+        for (TargetRow row : targetRows) row.clearPreviewResult();
+        targetRows.clear();
+        imagesContentPanel.removeAll();
+        ImagePlus oldRepresentative = representativeImp;
+        boolean oldOwned = ownsRepresentativeImp;
+        representativeImp = null;
+        representativeRawImp = null;
+        ownsRepresentativeImp = false;
+        SeededSpotQuantifier3DImageSupport.disposeProcessingImage(oldRepresentative, oldOwned);
     }
 
     private void toggleSelectorDialog() {
@@ -661,7 +662,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveOptionsPanel.setVisible(saveSectionExpanded);
         saveToggleBtn.setLabel(saveSectionExpanded ? "\u25bc Save options" : "\u25b6 Save options");
         rightCenterPanel.validate();
-        rightCenterPanel.repaint();
+        pack();
     }
 
     private void setSaveChecks(boolean state) {
@@ -673,21 +674,21 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveParamCheck.setState(state);
     }
 
-    private void chooseSaveDirectory() {
+    private File chooseSaveDirectory() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Select save folder");
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         chooser.setAcceptAllFileFilterUsed(false);
-        if (selectedSaveDir != null && selectedSaveDir.isDirectory()) {
-            chooser.setCurrentDirectory(selectedSaveDir);
-        }
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File dir = chooser.getSelectedFile();
-            if (dir != null) {
-                selectedSaveDir = dir;
-                saveToField.setText(dir.getAbsolutePath());
-            }
-        }
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return null;
+        File dir = chooser.getSelectedFile();
+        if (dir == null) return null;
+        return dir;
+    }
+
+    private void runSaveTo() {
+        File explicitDir = chooseSaveDirectory();
+        if (explicitDir == null) return;
+        runSaveAll(explicitDir);
     }
 
     private void setAllTargetSelection(boolean state) {
@@ -891,8 +892,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveParamCheck.setEnabled(hasSelected);
         customFolderCheck.setEnabled(hasSelected);
         folderNameField.setEnabled(hasSelected && customFolderCheck.getState());
-        saveToField.setEnabled(hasSelected);
-        saveToBtn.setEnabled(hasSelected);
+        saveToExecBtn.setEnabled(hasSelected);
         applyBtn.setEnabled(hasSelected);
         saveAllBtn.setEnabled(hasSelected);
     }
@@ -1029,6 +1029,10 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
     }
 
     private void runSaveAll() {
+        runSaveAll(null);
+    }
+
+    private void runSaveAll(final File explicitDir) {
         final List<TargetRow> selected = selectedTargets();
         if (selected.isEmpty()) {
             setStatusText("Select at least one 3D image.");
@@ -1051,6 +1055,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
 
         applyBtn.setEnabled(false);
         saveAllBtn.setEnabled(false);
+        saveToExecBtn.setEnabled(false);
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         setStatusText("Saving: preparing...");
 
@@ -1068,7 +1073,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
                     }
 
                     File outDir = SeededSpotQuantifier3DSaveSupport.resolveOutputDir(
-                        SeededSpotQuantifier3DMultiFrame.this, row.rawImp, customFolder, folderPattern, st, at, selectedSaveDir);
+                        SeededSpotQuantifier3DMultiFrame.this, row.rawImp, customFolder, folderPattern, st, at, explicitDir);
                     if (outDir == null) {
                         summary.failed++;
                         summary.failedImages.add(row.rawImp.getShortTitle() + " (no output folder)");
@@ -1097,7 +1102,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
                     try {
                         final String prefix = idx + "/" + selected.size() + " " + row.rawImp.getShortTitle() + " - ";
                         String err = SeededSpotQuantifier3DSaveSupport.saveOneToDir(
-                            proc, at, st, areaEn, params, outDir,
+                            proc, row.rawImp, selectedCh, at, st, areaEn, params, outDir,
                             saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveCsv, saveParam, roiColor,
                             msg -> publish(() -> setStatusText(prefix + trimSavingPrefix(msg))));
                         if (err == null) {
@@ -1127,6 +1132,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
             protected void done() {
                 applyBtn.setEnabled(true);
                 saveAllBtn.setEnabled(true);
+                saveToExecBtn.setEnabled(true);
                 setCursor(Cursor.getDefaultCursor());
                 try {
                     SaveSummary summary = get();

@@ -30,7 +30,7 @@ public final class SeededSpotQuantifier3DSaveSupport {
 
     public static File resolveOutputDir(Frame parent, ImagePlus target, boolean customFolder, String pattern,
                                         int seedThreshold, int areaThreshold, File explicitBaseDir) {
-        String basename = target.getShortTitle().replaceAll("\\.tiff?$", "");
+        String basename = saveBaseName(target);
         String folderName = expandFolderTokens(customFolder ? pattern : "{name} result",
             basename, seedThreshold, areaThreshold);
 
@@ -63,7 +63,21 @@ public final class SeededSpotQuantifier3DSaveSupport {
             .replace("{area}", String.valueOf(area));
     }
 
-    public static String saveOneToDir(ImagePlus target, int at, int st, boolean areaEn,
+    public static String saveBaseName(ImagePlus image) {
+        if (image == null) return "";
+        FileInfo fi = image.getOriginalFileInfo();
+        if (fi != null && fi.fileName != null && !fi.fileName.trim().isEmpty()) {
+            return stripTiffExtension(fi.fileName.trim());
+        }
+        String title = image.getTitle();
+        if (title != null && !title.trim().isEmpty()) {
+            return stripTiffExtension(title.trim());
+        }
+        return stripTiffExtension(image.getShortTitle());
+    }
+
+    public static String saveOneToDir(ImagePlus target, ImagePlus roiPositionSource, int roiChannel,
+                                      int at, int st, boolean areaEn,
                                       QuantifierParams params, File outDir,
                                       boolean saveSeedRoi, boolean saveSizeRoi,
                                       boolean saveAreaRoi, boolean saveResultRoi,
@@ -81,7 +95,7 @@ public final class SeededSpotQuantifier3DSaveSupport {
             target, at, st, params, tVoxelVol, areaEn);
         if (r == null) return "no spots detected";
 
-        String basename = target.getShortTitle().replaceAll("\\.tiff?$", "");
+        String basename = saveBaseName(roiPositionSource != null ? roiPositionSource : target);
 
         try {
             outDir.mkdirs();
@@ -100,12 +114,12 @@ public final class SeededSpotQuantifier3DSaveSupport {
 
             if (saveSeedRoi && r.rawSeedSeg != null) {
                 reportProgress(progress, "Saving: writing seed ROI...");
-                saveRoiToZip(r.rawSeedSeg, roiColor, new File(outDir, basename + "_seed_roi.zip"));
+                saveRoiToZip(r.rawSeedSeg, roiColor, roiPositionSource, roiChannel, new File(outDir, basename + "_seed_roi.zip"));
             }
 
             if (saveSizeRoi && r.seedSeg != null) {
                 reportProgress(progress, "Saving: writing size ROI...");
-                saveRoiToZip(r.seedSeg, roiColor, new File(outDir, basename + "_size_roi.zip"));
+                saveRoiToZip(r.seedSeg, roiColor, roiPositionSource, roiChannel, new File(outDir, basename + "_size_roi.zip"));
             }
 
             if (saveAreaRoi) {
@@ -116,12 +130,12 @@ public final class SeededSpotQuantifier3DSaveSupport {
                 Map<Integer, Integer> allValidMap = new HashMap<>();
                 areaCC.voxelCounts.keySet().forEach(k -> allValidMap.put(k, CcResult3D.STATUS_VALID));
                 SegmentationResult3D areaSeg = areaCC.buildFilteredResult(allValidMap);
-                saveRoiToZip(areaSeg, roiColor, new File(outDir, basename + "_area_roi.zip"));
+                saveRoiToZip(areaSeg, roiColor, roiPositionSource, roiChannel, new File(outDir, basename + "_area_roi.zip"));
             }
 
             if (saveResultRoi && r.finalSeg != null) {
                 reportProgress(progress, "Saving: writing result ROI...");
-                saveRoiToZip(r.finalSeg, roiColor, new File(outDir, basename + "_result_roi.zip"));
+                saveRoiToZip(r.finalSeg, roiColor, roiPositionSource, roiChannel, new File(outDir, basename + "_result_roi.zip"));
             }
 
             return null;
@@ -130,11 +144,12 @@ public final class SeededSpotQuantifier3DSaveSupport {
         }
     }
 
-    private static void saveRoiToZip(SegmentationResult3D seg, Color roiColor, File zipFile) {
+    private static void saveRoiToZip(SegmentationResult3D seg, Color roiColor,
+                                      ImagePlus roiPositionSource, int roiChannel, File zipFile) {
         if (seg == null || seg.labelImage == null) return;
         RoiManager rm = RoiManager.getRoiManager();
         rm.reset();
-        new RoiExporter3D().exportToRoiManager(seg.labelImage, roiColor);
+        new RoiExporter3D().exportToRoiManager(seg.labelImage, roiColor, roiPositionSource, roiChannel);
         if (rm.getCount() > 0) {
             RoiExporter.saveRoiManagerToZip(zipFile.getAbsolutePath());
         }
@@ -143,5 +158,9 @@ public final class SeededSpotQuantifier3DSaveSupport {
 
     private static void reportProgress(Consumer<String> progress, String message) {
         if (progress != null) progress.accept(message);
+    }
+
+    private static String stripTiffExtension(String name) {
+        return name.replaceAll("\\.tiff?$", "");
     }
 }

@@ -51,6 +51,11 @@ public class RoiExporter3D {
      * @param roiColor stroke color applied to every exported ROI
      */
     public void exportToRoiManager(ImagePlus labelImage, Color roiColor) {
+        exportToRoiManager(labelImage, roiColor, null, 1);
+    }
+
+    public void exportToRoiManager(ImagePlus labelImage, Color roiColor,
+                                    ImagePlus sourceImage, int sourceChannel) {
         if (labelImage == null) {
             IJ.error("Add ROI failed", "Label image is missing.");
             return;
@@ -59,8 +64,10 @@ public class RoiExporter3D {
         int w = labelImage.getWidth();
         int h = labelImage.getHeight();
         int d = labelImage.getNSlices();
-        int nChannels = Math.max(1, labelImage.getNChannels());
-        int channel = Math.max(1, labelImage.getC());
+        int nChannels = Math.max(1, sourceImage != null ? sourceImage.getNChannels() : labelImage.getNChannels());
+        int channel   = Math.max(1, sourceImage != null
+            ? Math.min(nChannels, sourceChannel)
+            : labelImage.getC());
 
         // Find all unique labels (use getPixel to handle float/int properly)
         TreeSet<Integer> labels = new TreeSet<>();

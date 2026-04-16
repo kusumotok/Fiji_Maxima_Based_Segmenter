@@ -39,9 +39,14 @@ public class SpotMeasurer {
         // Per-label accumulators (use HashMap; labels may be sparse after filtering)
         Map<Integer, long[]>   voxCount = new HashMap<>();  // [0]
         Map<Integer, double[]> intDen   = new HashMap<>();  // [0] = sum of intensity
+        Map<Integer, double[]> maxInt   = new HashMap<>();  // [0] = max intensity
+        Map<Integer, double[]> surface  = new HashMap<>();  // [0] = surface area
         Map<Integer, double[]> sumX     = new HashMap<>();  // [0]
         Map<Integer, double[]> sumY     = new HashMap<>();  // [0]
         Map<Integer, double[]> sumZ     = new HashMap<>();  // [0]
+        double yzFace = vh * vd;
+        double xzFace = vw * vd;
+        double xyFace = vw * vh;
 
         for (int z = 1; z <= d; z++) {
             ImageProcessor labelIp = labelStack.getProcessor(z);
@@ -55,9 +60,20 @@ public class SpotMeasurer {
 
                     voxCount.computeIfAbsent(label, k -> new long[1])[0]   += 1;
                     intDen  .computeIfAbsent(label, k -> new double[1])[0] += intensity;
+                    double[] maxHolder = maxInt.computeIfAbsent(label, k -> new double[]{Double.NEGATIVE_INFINITY});
+                    if (intensity > maxHolder[0]) maxHolder[0] = intensity;
                     sumX    .computeIfAbsent(label, k -> new double[1])[0] += x;
                     sumY    .computeIfAbsent(label, k -> new double[1])[0] += y;
                     sumZ    .computeIfAbsent(label, k -> new double[1])[0] += (z - 1); // 0-based Z index
+
+                    double exposed = 0.0;
+                    if (x == 0 || (int) Math.round(labelIp.getPixelValue(x - 1, y)) != label) exposed += yzFace;
+                    if (x == w - 1 || (int) Math.round(labelIp.getPixelValue(x + 1, y)) != label) exposed += yzFace;
+                    if (y == 0 || (int) Math.round(labelIp.getPixelValue(x, y - 1)) != label) exposed += xzFace;
+                    if (y == h - 1 || (int) Math.round(labelIp.getPixelValue(x, y + 1)) != label) exposed += xzFace;
+                    if (z == 1 || (int) Math.round(labelStack.getProcessor(z - 1).getPixelValue(x, y)) != label) exposed += xyFace;
+                    if (z == d || (int) Math.round(labelStack.getProcessor(z + 1).getPixelValue(x, y)) != label) exposed += xyFace;
+                    surface.computeIfAbsent(label, k -> new double[1])[0] += exposed;
                 }
             }
         }
@@ -68,6 +84,8 @@ public class SpotMeasurer {
         for (int label : new java.util.TreeSet<>(voxCount.keySet())) {
             long   nVox    = voxCount.get(label)[0];
             double totalI  = intDen.get(label)[0];
+            double maxI    = maxInt.get(label)[0];
+            double surfA   = surface.get(label)[0];
             double cx      = sumX.get(label)[0] / nVox;
             double cy      = sumY.get(label)[0] / nVox;
             double cz      = sumZ.get(label)[0] / nVox;
@@ -76,8 +94,10 @@ public class SpotMeasurer {
                 label,
                 nVox,
                 nVox * voxelVol,
+                surfA,
                 totalI,
                 totalI / nVox,
+                maxI,
                 cx * vw,
                 cy * vh,
                 cz * vd
