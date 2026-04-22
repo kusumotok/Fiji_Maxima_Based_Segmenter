@@ -5,10 +5,15 @@ plugin/target/
 Fiji/
 
 # ---- Local agent/tooling files (do not publish) ----
+.claude/
+.kiro/
 codex/
 skills/
 .codex/
 agents.md
+
+# ---- Old local output / scratch ----
+0/
 
 # ---- Java / Maven transient files ----
 *.class

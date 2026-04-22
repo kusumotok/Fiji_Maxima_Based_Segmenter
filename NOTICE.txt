@@ -1,4 +1,4 @@
-Maxima-Based Segmenter Suite
+Fiji Segmentation Suite
 Copyright (c) 2026 kusumotok
 
 This software uses the following third-party libraries:
@@ -7,9 +7,10 @@ This software uses the following third-party libraries:
 
 ImageJ
 https://imagej.net/
-Public Domain
+Public Domain / Disclaimer
 
-ImageJ is in the public domain. You may use it for any purpose.
+ImageJ 1.x is generally treated as public domain software.
+See the ImageJ licensing note for details about its legal status in different jurisdictions.
 
 ================================================================================
 
@@ -28,5 +29,14 @@ https://www.gnu.org/licenses/lgpl-3.0.html
 
 ================================================================================
 
-This software (Maxima-Based Segmenter Suite) is licensed under the MIT License.
+JUnit 4
+https://github.com/junit-team/junit4
+Eclipse Public License 1.0 (EPL-1.0)
+
+This project uses JUnit only as a test-scope dependency and it is not bundled
+in the distributed Fiji plugin jar.
+
+================================================================================
+
+This software (Fiji Segmentation Suite) is licensed under the MIT License.
 See the LICENSE file for the full license text.
