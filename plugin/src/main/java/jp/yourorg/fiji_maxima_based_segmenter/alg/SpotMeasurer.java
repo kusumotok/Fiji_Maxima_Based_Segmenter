@@ -21,6 +21,27 @@ import java.util.function.BooleanSupplier;
  *   - centroid in µm (X, Y, Z)
  */
 public class SpotMeasurer {
+    private static final class FeretResult {
+        final double distanceUm;
+        final double p1xUm;
+        final double p1yUm;
+        final double p1zUm;
+        final double p2xUm;
+        final double p2yUm;
+        final double p2zUm;
+
+        FeretResult(double distanceUm,
+                    double p1xUm, double p1yUm, double p1zUm,
+                    double p2xUm, double p2yUm, double p2zUm) {
+            this.distanceUm = distanceUm;
+            this.p1xUm = p1xUm;
+            this.p1yUm = p1yUm;
+            this.p1zUm = p1zUm;
+            this.p2xUm = p2xUm;
+            this.p2yUm = p2yUm;
+            this.p2zUm = p2zUm;
+        }
+    }
 
     /**
      * @param seg     Filtered SegmentationResult3D (invalid labels already zeroed)
@@ -106,7 +127,7 @@ public class SpotMeasurer {
             double cy      = sumY.get(label)[0] / nVox;
             double cz      = sumZ.get(label)[0] / nVox;
 
-            double maxFeret = computeMaxFeret3D(voxels.get(label), vw, vh, vd);
+            FeretResult feret = computeMaxFeret3D(voxels.get(label), vw, vh, vd);
             result.add(new SpotMeasurement(
                 label,
                 nVox,
@@ -119,15 +140,30 @@ public class SpotMeasurer {
                 cx * vw,
                 cy * vh,
                 cz * vd,
-                maxFeret
+                feret.distanceUm,
+                feret.p1xUm,
+                feret.p1yUm,
+                feret.p1zUm,
+                feret.p2xUm,
+                feret.p2yUm,
+                feret.p2zUm
             ));
         }
         return result;
     }
 
-    private static double computeMaxFeret3D(List<int[]> pts, double vw, double vh, double vd) {
-        if (pts == null || pts.size() < 2) return 0.0;
+    private static FeretResult computeMaxFeret3D(List<int[]> pts, double vw, double vh, double vd) {
+        if (pts == null || pts.isEmpty()) return new FeretResult(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        if (pts.size() == 1) {
+            int[] p = pts.get(0);
+            double x = p[0] * vw;
+            double y = p[1] * vh;
+            double z = p[2] * vd;
+            return new FeretResult(0.0, x, y, z, x, y, z);
+        }
         double maxDist2 = 0.0;
+        int[] bestA = pts.get(0);
+        int[] bestB = pts.get(0);
         int n = pts.size();
         for (int i = 0; i < n; i++) {
             int[] a = pts.get(i);
@@ -137,10 +173,18 @@ public class SpotMeasurer {
                 double dy = (a[1] - b[1]) * vh;
                 double dz = (a[2] - b[2]) * vd;
                 double d2 = dx * dx + dy * dy + dz * dz;
-                if (d2 > maxDist2) maxDist2 = d2;
+                if (d2 > maxDist2) {
+                    maxDist2 = d2;
+                    bestA = a;
+                    bestB = b;
+                }
             }
         }
-        return Math.sqrt(maxDist2);
+        return new FeretResult(
+            Math.sqrt(maxDist2),
+            bestA[0] * vw, bestA[1] * vh, bestA[2] * vd,
+            bestB[0] * vw, bestB[1] * vh, bestB[2] * vd
+        );
     }
 
     private static void checkCancelled(BooleanSupplier shouldCancel) {

@@ -15,6 +15,9 @@ agents.md
 # ---- Old local output / scratch ----
 0/
 
+# ---- Local handoff notes ----
+LOCAL_NOTES.md
+
 # ---- Java / Maven transient files ----
 *.class
 *.log

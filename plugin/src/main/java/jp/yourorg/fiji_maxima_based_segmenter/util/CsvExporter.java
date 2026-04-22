@@ -16,7 +16,9 @@ public class CsvExporter {
 
     private static final String CSV_HEADER =
         "spot_id,volume_um3,volume_vox,surface_area_um2,sphericity,integrated_intensity,mean_intensity,max_intensity," +
-        "centroid_x_um,centroid_y_um,centroid_z_um,max_feret3d_um";
+        "centroid_x_um,centroid_y_um,centroid_z_um,max_feret3d_um," +
+        "max_feret_p1_x_um,max_feret_p1_y_um,max_feret_p1_z_um," +
+        "max_feret_p2_x_um,max_feret_p2_y_um,max_feret_p2_z_um";
 
     /**
      * Write spot measurements to a CSV file.
@@ -30,7 +32,7 @@ public class CsvExporter {
                 new OutputStreamWriter(new FileOutputStream(out), StandardCharsets.UTF_8)))) {
             pw.println(CSV_HEADER);
             for (SpotMeasurement s : spots) {
-                pw.printf("%d,%.6f,%d,%.6f,%.6f,%.2f,%.4f,%.2f,%.4f,%.4f,%.4f,%.4f%n",
+                pw.printf("%d,%.6f,%d,%.6f,%.6f,%.2f,%.4f,%.2f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f%n",
                     s.id,
                     s.volumeUm3,
                     s.volumeVox,
@@ -42,7 +44,13 @@ public class CsvExporter {
                     s.centroidXUm,
                     s.centroidYUm,
                     s.centroidZUm,
-                    s.maxFeret3DUm);
+                    s.maxFeret3DUm,
+                    s.maxFeretP1XUm,
+                    s.maxFeretP1YUm,
+                    s.maxFeretP1ZUm,
+                    s.maxFeretP2XUm,
+                    s.maxFeretP2YUm,
+                    s.maxFeretP2ZUm);
             }
         }
     }

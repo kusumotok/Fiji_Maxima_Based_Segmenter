@@ -108,12 +108,13 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
     private final Button saveAllBtn = new Button("Save");
     private final Button cancelBtn = new Button("Cancel");
 
-    private final Checkbox saveSeedRoiCheck   = new Checkbox("Seed ROI",   false);
-    private final Checkbox saveSizeRoiCheck   = new Checkbox("Size ROI",   false);
-    private final Checkbox saveAreaRoiCheck   = new Checkbox("Area ROI",   false);
-    private final Checkbox saveResultRoiCheck = new Checkbox("Result ROI", true);
-    private final Checkbox saveCsvCheck       = new Checkbox("CSV",        true);
-    private final Checkbox saveParamCheck     = new Checkbox("Param",      true);
+    private final Checkbox saveSeedRoiCheck           = new Checkbox("Seed ROI", false);
+    private final Checkbox saveSizeRoiCheck           = new Checkbox("Size ROI", false);
+    private final Checkbox saveAreaRoiCheck           = new Checkbox("Area ROI", false);
+    private final Checkbox saveResultRoiCheck         = new Checkbox("Result ROI", true);
+    private final Checkbox saveResultRoiByObjectCheck = new Checkbox("Result ROI by object", false);
+    private final Checkbox saveCsvCheck               = new Checkbox("CSV", true);
+    private final Checkbox saveParamCheck             = new Checkbox("Param", true);
     private final Checkbox customFolderCheck  = new Checkbox("Custom folder name:", false);
     private final TextField folderNameField   = new TextField("{name} result", 22);
     private final Button    saveToExecBtn     = new Button("Save to...");
@@ -708,6 +709,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveSizeRoiCheck.setState(state);
         saveAreaRoiCheck.setState(state);
         saveResultRoiCheck.setState(state);
+        saveResultRoiByObjectCheck.setState(state);
         saveCsvCheck.setState(state);
         saveParamCheck.setState(state);
     }
@@ -927,6 +929,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveSizeRoiCheck.setEnabled(hasSelected);
         saveAreaRoiCheck.setEnabled(hasSelected);
         saveResultRoiCheck.setEnabled(hasSelected);
+        saveResultRoiByObjectCheck.setEnabled(hasSelected);
         saveCsvCheck.setEnabled(hasSelected);
         saveParamCheck.setEnabled(hasSelected);
         customFolderCheck.setEnabled(hasSelected);
@@ -1100,6 +1103,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         final boolean saveSizeRoi = saveSizeRoiCheck.getState();
         final boolean saveAreaRoi = saveAreaRoiCheck.getState();
         final boolean saveResultRoi = saveResultRoiCheck.getState();
+        final boolean saveResultRoiByObject = saveResultRoiByObjectCheck.getState();
         final boolean saveCsv = saveCsvCheck.getState();
         final boolean saveParam = saveParamCheck.getState();
         final boolean customFolder = customFolderCheck.getState();
@@ -1158,7 +1162,8 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
                         final String prefix = idx + "/" + selected.size() + " " + row.rawImp.getShortTitle() + " - ";
                         String err = SeededSpotQuantifier3DSaveSupport.saveOneToDir(
                             proc, row.rawImp, selectedCh, at, st, areaEn, params, outDir,
-                            saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveCsv, saveParam, roiColor,
+                            saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveResultRoiByObject,
+                            saveCsv, saveParam, roiColor,
                             msg -> publish(() -> setStatusText(prefix + trimSavingPrefix(msg))),
                             () -> isCancelled() || cancelRequested.get());
                         if (SeededSpotQuantifier3DSaveSupport.CANCELLED.equals(err)) {
@@ -1238,6 +1243,7 @@ public class SeededSpotQuantifier3DMultiFrame extends PlugInFrame {
         saveChecksGrid.add(saveSizeRoiCheck);
         saveChecksGrid.add(saveAreaRoiCheck);
         saveChecksGrid.add(saveResultRoiCheck);
+        saveChecksGrid.add(saveResultRoiByObjectCheck);
         saveChecksGrid.add(saveCsvCheck);
         saveChecksGrid.add(saveParamCheck);
     }

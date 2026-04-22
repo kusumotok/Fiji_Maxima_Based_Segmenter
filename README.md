@@ -40,6 +40,7 @@ single-image 向けの GUI で、window / channel 選択、preview、保存、ba
 - `Size ROI`
 - `Area ROI`
 - `Result ROI`
+- `Result ROI by object`
 - `CSV`
 - `Param`
 
@@ -69,12 +70,20 @@ CSV 出力列:
 - `centroid_x_um`
 - `centroid_y_um`
 - `centroid_z_um`
+- `max_feret3d_um`
+- `max_feret_p1_x_um`
+- `max_feret_p1_y_um`
+- `max_feret_p1_z_um`
+- `max_feret_p2_x_um`
+- `max_feret_p2_y_um`
+- `max_feret_p2_z_um`
 
 ROI 出力:
 
 - single-channel 画像では `roi.setPosition(z)`
 - multi-channel 画像では `roi.setPosition(channel, z, 1)`
 - ROI zip は visible ROI Manager ではなく hidden ROI Manager 経由で保存します
+- `Result ROI by object` を有効にすると、object ごとの ROI zip をまとめたフォルダも出力できます
 
 ## Seeded Spot Quantifier 3D Multi
 
@@ -127,6 +136,7 @@ run("Seeded Spot Quantifier 3D",
 - `save_size_roi`
 - `save_area_roi`
 - `save_result_roi`
+- `save_result_roi_by_object`
 - `save_csv`
 - `save_param`
 - `custom_folder`

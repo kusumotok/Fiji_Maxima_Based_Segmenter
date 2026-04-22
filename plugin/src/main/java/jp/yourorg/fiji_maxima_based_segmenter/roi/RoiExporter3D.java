@@ -11,7 +11,9 @@ import ij.process.ImageProcessor;
 
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 
 public class RoiExporter3D {
@@ -79,9 +81,19 @@ public class RoiExporter3D {
 
     public List<Roi> exportToRoiList(ImagePlus labelImage, Color roiColor,
                                      ImagePlus sourceImage, int sourceChannel) {
+        Map<Integer, List<Roi>> grouped = exportToRoiListsByLabel(labelImage, roiColor, sourceImage, sourceChannel);
+        List<Roi> rois = new ArrayList<Roi>();
+        for (List<Roi> each : grouped.values()) {
+            rois.addAll(each);
+        }
+        return rois;
+    }
+
+    public Map<Integer, List<Roi>> exportToRoiListsByLabel(ImagePlus labelImage, Color roiColor,
+                                                            ImagePlus sourceImage, int sourceChannel) {
         if (labelImage == null) {
             IJ.error("Add ROI failed", "Label image is missing.");
-            return java.util.Collections.emptyList();
+            return java.util.Collections.emptyMap();
         }
         ImageStack stack = labelImage.getStack();
         int w = labelImage.getWidth();
@@ -105,11 +117,12 @@ public class RoiExporter3D {
         }
 
         if (labels.isEmpty()) {
-            return java.util.Collections.emptyList();
+            return java.util.Collections.emptyMap();
         }
 
-        List<Roi> rois = new ArrayList<Roi>();
+        Map<Integer, List<Roi>> roisByLabel = new LinkedHashMap<Integer, List<Roi>>();
         for (int label : labels) {
+            List<Roi> rois = new ArrayList<Roi>();
             for (int z = 1; z <= d; z++) {
                 ImageProcessor ip = stack.getProcessor(z);
                 ByteProcessor bp = new ByteProcessor(w, h);
@@ -138,7 +151,8 @@ public class RoiExporter3D {
                 roi.setName(String.format("obj-%03d-z%03d", label, z));
                 rois.add(roi);
             }
+            if (!rois.isEmpty()) roisByLabel.put(label, rois);
         }
-        return rois;
+        return roisByLabel;
     }
 }

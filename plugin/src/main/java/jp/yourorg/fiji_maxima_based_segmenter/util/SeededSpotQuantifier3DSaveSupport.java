@@ -84,19 +84,20 @@ public final class SeededSpotQuantifier3DSaveSupport {
                                       int at, int st, boolean areaEn,
                                       QuantifierParams params, File outDir,
                                       boolean saveSeedRoi, boolean saveSizeRoi,
-                                      boolean saveAreaRoi, boolean saveResultRoi,
+                                      boolean saveAreaRoi, boolean saveResultRoi, boolean saveResultRoiByObject,
                                       boolean saveCsv, boolean saveParam,
                                       Color roiColor,
                                       Consumer<String> progress) {
         return saveOneToDir(target, roiPositionSource, roiChannel, at, st, areaEn, params, outDir,
-            saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveCsv, saveParam, roiColor, progress, null);
+            saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveResultRoiByObject,
+            saveCsv, saveParam, roiColor, progress, null);
     }
 
     public static String saveOneToDir(ImagePlus target, ImagePlus roiPositionSource, int roiChannel,
                                       int at, int st, boolean areaEn,
                                       QuantifierParams params, File outDir,
                                       boolean saveSeedRoi, boolean saveSizeRoi,
-                                      boolean saveAreaRoi, boolean saveResultRoi,
+                                      boolean saveAreaRoi, boolean saveResultRoi, boolean saveResultRoiByObject,
                                       boolean saveCsv, boolean saveParam,
                                       Color roiColor,
                                       Consumer<String> progress,
@@ -166,6 +167,12 @@ public final class SeededSpotQuantifier3DSaveSupport {
                 saveRoiToZip(r.finalSeg, roiColor, roiPositionSource, roiChannel,
                     new File(outDir, basename + "_result_roi.zip"));
             }
+            if (saveResultRoiByObject && r.finalSeg != null) {
+                checkCancelled(shouldCancel);
+                reportProgress(progress, "Saving: writing result ROI by object...");
+                saveRoiObjectsToFolder(r.finalSeg, roiColor, roiPositionSource, roiChannel,
+                    new File(outDir, basename + "_result_roi_objects"));
+            }
 
             return null;
         } catch (CancellationException ex) {
@@ -189,6 +196,23 @@ public final class SeededSpotQuantifier3DSaveSupport {
         }
         rm.reset();
         rm.close();
+    }
+
+    private static void saveRoiObjectsToFolder(SegmentationResult3D seg, Color roiColor,
+                                               ImagePlus roiPositionSource, int roiChannel, File outFolder) {
+        if (seg == null || seg.labelImage == null) return;
+        RoiExporter3D exporter = new RoiExporter3D();
+        Map<Integer, List<ij.gui.Roi>> grouped = exporter.exportToRoiListsByLabel(
+            seg.labelImage, roiColor, roiPositionSource, roiChannel);
+        if (grouped.isEmpty()) return;
+        outFolder.mkdirs();
+        for (Map.Entry<Integer, List<ij.gui.Roi>> entry : grouped.entrySet()) {
+            int label = entry.getKey();
+            List<ij.gui.Roi> rois = entry.getValue();
+            if (rois == null || rois.isEmpty()) continue;
+            File zipFile = new File(outFolder, String.format("obj-%03d.zip", label));
+            RoiExporter.saveRoisToZip(rois.toArray(new ij.gui.Roi[0]), zipFile.getAbsolutePath());
+        }
     }
 
     private static void reportProgress(Consumer<String> progress, String message) {

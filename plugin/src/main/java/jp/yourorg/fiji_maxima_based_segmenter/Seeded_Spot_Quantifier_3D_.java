@@ -58,6 +58,7 @@ public class Seeded_Spot_Quantifier_3D_ implements PlugIn {
             boolean saveSizeRoi = parseBool(options, "save_size_roi", false);
             boolean saveAreaRoi = parseBool(options, "save_area_roi", false);
             boolean saveResultRoi = parseBool(options, "save_result_roi", true);
+            boolean saveResultRoiByObject = parseBool(options, "save_result_roi_by_object", false);
             boolean saveCsv = parseBool(options, "save_csv", true);
             boolean saveParam = parseBool(options, "save_param", true);
             boolean customFolder = parseBool(options, "custom_folder", false);
@@ -82,7 +83,7 @@ public class Seeded_Spot_Quantifier_3D_ implements PlugIn {
             String err = SeededSpotQuantifier3DSaveSupport.saveOneToDir(
                 procImp, imp, selectedChannel,
                 areaThreshold, seedThreshold, areaEnabled, params, outDir,
-                saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi,
+                saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveResultRoiByObject,
                 saveCsv, saveParam, null,
                 stage -> IJ.showStatus("Seeded Spot Quantifier 3D: " + stage));
             if (SeededSpotQuantifier3DSaveSupport.CANCELLED.equals(err)) {

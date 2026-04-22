@@ -109,6 +109,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
     private final Checkbox  saveSizeRoiCheck   = new Checkbox("Size ROI",   false);
     private final Checkbox  saveAreaRoiCheck   = new Checkbox("Area ROI",   false);
     private final Checkbox  saveResultRoiCheck = new Checkbox("Result ROI", true);
+    private final Checkbox  saveResultRoiByObjectCheck = new Checkbox("Result ROI by object", false);
     private final Checkbox  saveCsvCheck       = new Checkbox("CSV",        true);
     private final Checkbox  saveParamCheck     = new Checkbox("Param",      true);
     private final Checkbox  customFolderCheck  = new Checkbox("Custom folder name:", false);
@@ -496,6 +497,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         saveSizeRoiCheck  .setState(state);
         saveAreaRoiCheck  .setState(state);
         saveResultRoiCheck.setState(state);
+        saveResultRoiByObjectCheck.setState(state);
         saveCsvCheck      .setState(state);
         saveParamCheck    .setState(state);
     }
@@ -663,6 +665,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         saveSizeRoiCheck.setEnabled(hasTarget);
         saveAreaRoiCheck.setEnabled(hasTarget);
         saveResultRoiCheck.setEnabled(hasTarget);
+        saveResultRoiByObjectCheck.setEnabled(hasTarget);
         saveCsvCheck.setEnabled(hasTarget);
         saveParamCheck.setEnabled(hasTarget);
         customFolderCheck.setEnabled(hasTarget);
@@ -1446,6 +1449,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         boolean saveSizeRoi = saveSizeRoiCheck.getState();
         boolean saveAreaRoi = saveAreaRoiCheck.getState();
         boolean saveResultRoi = saveResultRoiCheck.getState();
+        boolean saveResultRoiByObject = saveResultRoiByObjectCheck.getState();
         boolean saveCsv = saveCsvCheck.getState();
         boolean saveParam = saveParamCheck.getState();
         Color roiColor = selectedRoiColor();
@@ -1460,7 +1464,8 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                 return SeededSpotQuantifier3DSaveSupport.saveOneToDir(
                     imp, rawImp != null ? rawImp : imp, selectedCh,
                     areaThreshold, seedThreshold, areaEnabled, params, outDir,
-                    saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveCsv, saveParam, roiColor,
+                    saveSeedRoi, saveSizeRoi, saveAreaRoi, saveResultRoi, saveResultRoiByObject,
+                    saveCsv, saveParam, roiColor,
                     msg -> publish(msg), () -> isCancelled() || cancelRequested.get());
             }
 
@@ -1535,6 +1540,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         saveChecksGrid.add(saveSizeRoiCheck);
         saveChecksGrid.add(saveAreaRoiCheck);
         saveChecksGrid.add(saveResultRoiCheck);
+        saveChecksGrid.add(saveResultRoiByObjectCheck);
         saveChecksGrid.add(saveCsvCheck);
         saveChecksGrid.add(saveParamCheck);
     }
@@ -1574,6 +1580,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
         private final JCheckBox bSaveSizeRoi;
         private final JCheckBox bSaveAreaRoi;
         private final JCheckBox bSaveResultRoi;
+        private final JCheckBox bSaveResultRoiByObject;
         private final JCheckBox bSaveCsv;
         private final JCheckBox bSaveParam;
         private final JCheckBox bCustomFolder;
@@ -1594,6 +1601,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             bSaveSizeRoi   = new JCheckBox("Size ROI",   saveSizeRoiCheck  .getState());
             bSaveAreaRoi   = new JCheckBox("Area ROI",   saveAreaRoiCheck  .getState());
             bSaveResultRoi = new JCheckBox("Result ROI", saveResultRoiCheck.getState());
+            bSaveResultRoiByObject = new JCheckBox("Result ROI by object", saveResultRoiByObjectCheck.getState());
             bSaveCsv       = new JCheckBox("CSV",        saveCsvCheck      .getState());
             bSaveParam     = new JCheckBox("Param",      saveParamCheck    .getState());
             bCustomFolder  = new JCheckBox("Custom folder name:", customFolderCheck.getState());
@@ -1684,6 +1692,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             checksRow.add(bSaveSizeRoi);
             checksRow.add(bSaveAreaRoi);
             checksRow.add(bSaveResultRoi);
+            checksRow.add(bSaveResultRoiByObject);
             checksRow.add(bSaveCsv);
             checksRow.add(bSaveParam);
             p.add(checksRow);
@@ -1702,6 +1711,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             bSaveSizeRoi  .setSelected(state);
             bSaveAreaRoi  .setSelected(state);
             bSaveResultRoi.setSelected(state);
+            bSaveResultRoiByObject.setSelected(state);
             bSaveCsv      .setSelected(state);
             bSaveParam    .setSelected(state);
         }
@@ -1789,6 +1799,7 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
             boolean sizeRoi   = bSaveSizeRoi  .isSelected();
             boolean areaRoi   = bSaveAreaRoi  .isSelected();
             boolean resultRoi = bSaveResultRoi.isSelected();
+            boolean resultRoiByObject = bSaveResultRoiByObject.isSelected();
             boolean csv       = bSaveCsv      .isSelected();
             boolean param     = bSaveParam    .isSelected();
             boolean customF   = bCustomFolder .isSelected();
@@ -1847,7 +1858,8 @@ public class SeededSpotQuantifier3DFrame extends PlugInFrame {
                         String err = SeededSpotQuantifier3DSaveSupport.saveOneToDir(
                             target, target, Math.max(1, target.getC()),
                             at, st, areaEn, params, outDir,
-                            seedRoi, sizeRoi, areaRoi, resultRoi, csv, param, roiColor, msg -> publish(msg));
+                            seedRoi, sizeRoi, areaRoi, resultRoi, resultRoiByObject,
+                            csv, param, roiColor, msg -> publish(msg));
                         target.close();
                         if (err != null) {
                             IJ.log("Batch SKIP (" + err + "): " + f.getName());
