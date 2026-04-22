@@ -159,10 +159,7 @@ jar を差し替えたあとは Fiji の再起動が必要です。
 
 ## Docs
 
-- `docs/plugins-overview.md`
 - `docs/spot-quantifier-3d.md`
-- `docs/seeded-spot-quantifier-roadmap.md`
-- `docs/Spot_Quantifier_3D_PLAN.md`
 
 ## Dependencies
 
