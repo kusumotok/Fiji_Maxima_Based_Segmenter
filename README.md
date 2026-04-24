@@ -46,7 +46,7 @@ single-image 向けの GUI で、window / channel 選択、preview、保存、ba
 
 デフォルトで有効:
 
-- `Result ROI`
+- `Result ROI by object`
 - `CSV`
 - `Param`
 
@@ -115,7 +115,7 @@ run("Seeded Spot Quantifier 3D",
     "min_vol=0.1 max_vol=50.0 " +
     "gaussian_blur=false gauss_xy=1.0 gauss_z=0.5 " +
     "connectivity=6 fill_holes=false " +
-    "save_result_roi=true save_csv=true save_param=true " +
+    "save_result_roi_by_object=true save_csv=true save_param=true " +
     "output=[C:/path/to/output]");
 ```
 
@@ -145,7 +145,8 @@ run("Seeded Spot Quantifier 3D",
 
 macro のデフォルト保存設定:
 
-- `save_result_roi=true`
+- `save_result_roi=false`
+- `save_result_roi_by_object=true`
 - `save_csv=true`
 - `save_param=true`
 - `save_seed_roi=false`
